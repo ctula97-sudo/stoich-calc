@@ -12,8 +12,12 @@
   <main>
     <header><h1>화학량론 계산기</h1><p>재료 실험을 위한 원소별 칭량량 계산</p></header>
     <form id="calculator" novalidate>
-      <label>계산 모드<select id="mode"><option value="reference">기준 원소</option><option value="total">총 질량</option></select></label>
-      <label>화학식<input id="formula" type="text" placeholder="예: ZnGa2Se4" autocomplete="off"></label>
+      <label>계산 모드<select id="mode"><option value="reference">원소별 (기준 원소)</option><option value="total">원소별 (총 질량)</option><option value="mixture">화합물 혼합 (A → B)</option></select></label>
+      <label><span id="formula-label">화학식</span><input id="formula" type="text" placeholder="예: ZnGa2Se4" autocomplete="off"></label>
+      <div id="mixture-wrap" hidden>
+        <label><span id="formula-b-label">화합물 B 화학식</span><input id="formula-b" type="text" placeholder="예: InSb" autocomplete="off"></label>
+        <label><span id="ratio-label">몰비 B/A</span><input id="ratio" type="number" min="0" step="any" value="1" inputmode="decimal"></label>
+      </div>
       <div id="reference-wrap"><label>기준 원소<select id="element"></select></label></div>
       <label><span id="amount-label">기준 원소 질량</span><input id="amount" type="number" min="0" step="any" inputmode="decimal" placeholder="예: 1.0000"></label>
       <label>단위<select id="unit"><option value="g">g</option><option value="mg">mg</option></select></label>

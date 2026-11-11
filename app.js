@@ -4,6 +4,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var form = $('calculator'), mode = $('mode'), referenceWrap = $('reference-wrap');
   var formula = $('formula'), element = $('element'), amount = $('amount'), unit = $('unit');
+  var mixtureWrap = $('mixture-wrap'), formulaB = $('formula-b'), ratioInput = $('ratio');
   var error = $('error'), result = $('result'), historyBox = $('history');
   var storageKey = 'stoich-history-v1';
   // 기준 원소 목록은 입력한 화학식에 실제로 들어있는 원소만 보여준다.
@@ -43,12 +44,18 @@
   function renderHistory() {
     var list = readHistory();
     historyBox.innerHTML = list.length ? list.map(function (item, i) {
-      return '<button type="button" class="history-item" data-index="' + i + '">' + item.formula + ' · ' + (item.mode === 'reference' ? '기준 ' + item.element : '총 질량') + ' · ' + item.amount + item.unit + '</button>';
+      return '<button type="button" class="history-item" data-index="' + i + '">' + item.formula + ' · ' +
+        (item.mode === 'reference' ? '기준 ' + item.element : (item.mode === 'mixture' ? '× ' + (item.formulaB || '') + ' (몰비 ' + (item.ratio || 1) + ')' : '총 질량')) +
+        ' · ' + item.amount + item.unit + '</button>';
     }).join('') : '<p class="muted">아직 계산 기록이 없습니다.</p>';
   }
   function updateMode() {
-    referenceWrap.hidden = mode.value !== 'reference';
-    $('amount-label').textContent = mode.value === 'reference' ? '기준 원소 질량' : '목표 총 질량';
+    var current = mode.value;
+    referenceWrap.hidden = current !== 'reference';
+    if (mixtureWrap) mixtureWrap.hidden = current !== 'mixture';
+    $('amount-label').textContent = current === 'reference' ? '기준 원소 질량'
+      : (current === 'total' ? '목표 총 질량' : '화합물 A 질량');
+    $('formula-label').textContent = current === 'mixture' ? '화합물 A 화학식' : '화학식';
   }
   function render(data, anchor, raw) {
     var cards = data.rows.map(function (row) {
@@ -74,9 +81,32 @@
       '<p class="note">질량을 직접 고치면 나머지 원소가 그 값에 맞춰 다시 계산됩니다. 표시는 0.0001 g 해상도 기준.</p>';
     result.hidden = false;
   }
+  // 화합물 모드 결과: 화합물별 A/B 요약 + 원소별 총 칭량량
+  function renderMixture(data) {
+    var compounds = data.compounds.map(function (compound) {
+      return '<div class="card' + (compound.label === 'A' ? ' ref' : '') + '">' +
+        '<div class="card-top"><b>' + compound.label + ' · ' + compound.formula + '</b>' +
+        '<span class="card-mass static">' + formatMass(compound.massG) + '</span></div>' +
+        '<div class="card-sub">몰 질량 ' + compound.molarMass.toFixed(3) + ' g/mol · ' +
+        format(compound.moles) + ' mol</div></div>';
+    }).join('');
+    var rows = data.rows.map(function (row) {
+      return '<div class="card"><div class="card-top"><b>' + row.element + '</b>' +
+        '<span class="card-mass static">' + formatMass(row.massG) + '</span></div>' +
+        '<div class="card-sub">' + format(row.moleAmount) + ' mol · ' + format(row.massPercent) + '% · 원자량 ' +
+        row.atomicWeight + '</div></div>';
+    }).join('');
+    var shownSum = data.rows.reduce(function (sum, r) { return sum + roundedMass(r.massG); }, 0);
+    result.innerHTML = '<div class="summary"><strong>몰비 B/A</strong><span>' + format(data.ratio) + '</span><strong>합계 질량</strong><span>' + formatMass(data.totalMassG) + '</span></div>' +
+      '<h3 class="sub-head">화합물</h3><div class="cards">' + compounds + '</div>' +
+      '<h3 class="sub-head">원소별 총 칭량량</h3><div class="cards">' + rows + '</div>' +
+      '<p class="verify">검산: ' + data.rows.map(function (r) { return formatMass(r.massG); }).join(' + ') + ' = <b>' + formatMass(shownSum) + '</b></p>' +
+      '<p class="note">화합물 A 질량을 기준으로 몰비 B/A 만큼 B를 계산했습니다. 표시는 0.0001 g 해상도 기준.</p>';
+    result.hidden = false;
+  }
   // 결과 카드에서 질량을 직접 수정 → 수정한 원소를 기준으로 전체 재계산
   result.addEventListener('input', function (event) {
-    var field = event.target.closest ? event.target.closest('.card-mass') : null;
+    var field = event.target.closest ? event.target.closest('input.card-mass') : null;
     if (!field) return;
     var raw = field.value.replace(/,/g, '.').trim();
     var value = Number(raw);
@@ -91,6 +121,13 @@
   form.addEventListener('submit', function (event) {
     event.preventDefault(); error.textContent = ''; result.hidden = true;
     try {
+      if (mode.value === 'mixture') {
+        var mixed = calc.calculateMixture(formula.value, formulaB.value, { amount: amount.value, unit: unit.value, ratio: ratioInput.value });
+        renderMixture(mixed);
+        saveHistory({ formula: formula.value.trim(), formulaB: formulaB.value.trim(), mode: 'mixture', amount: amount.value, unit: unit.value, ratio: ratioInput.value });
+        renderHistory();
+        return;
+      }
       if (mode.value === 'reference' && !element.value) throw new Error('기준 원소를 선택해 주세요.');
       var data = calc.calculate(formula.value, { mode: mode.value, element: element.value, amount: amount.value, unit: unit.value });
       render(data, mode.value === 'reference' ? element.value : null);
@@ -104,6 +141,8 @@
     var button = event.target.closest('.history-item'); if (!button) return;
     var item = readHistory()[Number(button.dataset.index)]; if (!item) return;
     formula.value = item.formula; mode.value = item.mode; amount.value = item.amount; unit.value = item.unit;
+    if (item.formulaB !== undefined && formulaB) formulaB.value = item.formulaB;
+    if (item.ratio !== undefined && ratioInput) ratioInput.value = item.ratio;
     updateElements(); element.value = item.element || ''; updateMode(); form.requestSubmit();
   });
   updateMode(); updateElements(); renderHistory();

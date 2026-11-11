@@ -98,5 +98,40 @@
     return { formula: formula.trim(), composition: composition, molarMass: totalMolarMass, formulaMoles: formulaMoles, totalMassG: totalG, rows: rows };
   }
 
-  return { atomicWeights: weights, parseFormula: parseFormula, molarMass: molarMass, calculate: calculate };
+  // 화합물 모드: 화합물 A 질량 → 화합물 B 필요량(몰비 B/A) + 두 화합물의 원소별 총 칭량량
+  function calculateMixture(formulaA, formulaB, options) {
+    options = options || {};
+    var compA = parseFormula(formulaA), compB = parseFormula(formulaB);
+    var mmA = molarMass(compA), mmB = molarMass(compB);
+    var unitFactor = options.unit === 'mg' ? 0.001 : 1;
+    var massA = Number(options.amount) * unitFactor;
+    if (!Number.isFinite(massA) || massA <= 0) throw new Error('수량은 0보다 큰 숫자로 입력해 주세요.');
+    var ratioOption = options.ratio === undefined || options.ratio === '' ? 1 : Number(options.ratio);
+    if (!Number.isFinite(ratioOption) || ratioOption <= 0) throw new Error('몰비는 0보다 큰 숫자로 입력해 주세요.');
+    var nA = massA / mmA, nB = nA * ratioOption, massB = nB * mmB, totalMassG = massA + massB;
+    var totals = {};
+    [{ comp: compA, moles: nA }, { comp: compB, moles: nB }].forEach(function (item) {
+      Object.keys(item.comp).forEach(function (element) {
+        totals[element] = (totals[element] || 0) + item.moles * item.comp[element] * weights[element];
+      });
+    });
+    var rows = Object.keys(totals).map(function (element) {
+      return {
+        element: element, atomicWeight: weights[element], massG: totals[element],
+        moleAmount: totals[element] / weights[element], massPercent: (totals[element] / totalMassG) * 100
+      };
+    });
+    return {
+      ratio: ratioOption, totalMassG: totalMassG, rows: rows,
+      compounds: [
+        { label: 'A', formula: formulaA.trim(), molarMass: mmA, moles: nA, massG: massA },
+        { label: 'B', formula: formulaB.trim(), molarMass: mmB, moles: nB, massG: massB }
+      ]
+    };
+  }
+
+  return {
+    atomicWeights: weights, parseFormula: parseFormula, molarMass: molarMass,
+    calculate: calculate, calculateMixture: calculateMixture
+  };
 }));

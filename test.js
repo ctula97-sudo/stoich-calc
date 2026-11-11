@@ -39,4 +39,24 @@ test('atomic weights match CIAAW 2024 table', () => {
   }
   assert.deepStrictEqual(mismatches, [], mismatches.join('; '));
 });
+test('characters mode: SnTe -> InSb', () => {
+  const r = calc.calculateMixture('SnTe', 'InSb', { amount: 1, unit: 'g', ratio: 1 });
+  const mmA = calc.molarMass({ Sn: 1, Te: 1 });
+  const mmB = calc.molarMass({ In: 1, Sb: 1 });
+  assert(Math.abs(r.compounds[0].moles - 1 / mmA) < 1e-12);
+  assert(Math.abs(r.compounds[1].massG - (1 / mmA) * mmB) < 1e-12);
+  assert(Math.abs(r.totalMassG - (1 + (1 / mmA) * mmB)) < 1e-12);
+  const sum = r.rows.reduce((acc, row) => acc + row.massG, 0);
+  assert(Math.abs(sum - r.totalMassG) < 1e-9, 'element masses must add up');
+  assert.deepStrictEqual(r.rows.map(row => row.element).sort(), ['In', 'Sb', 'Sn', 'Te']);
+});
+test('mixture ratio scaling', () => {
+  const one = calc.calculateMixture('SnTe', 'InSb', { amount: 1, unit: 'g', ratio: 1 });
+  const two = calc.calculateMixture('SnTe', 'InSb', { amount: 1, unit: 'g', ratio: 2 });
+  assert(Math.abs(two.compounds[1].massG - 2 * one.compounds[1].massG) < 1e-12);
+  const half = calc.calculateMixture('SnTe', 'InSb', { amount: 0.5, unit: 'g', ratio: 1 });
+  assert(Math.abs(half.compounds[1].massG - 0.5 * one.compounds[1].massG) < 1e-12);
+  assert.throws(() => calc.calculateMixture('SnTe', 'InSb', { amount: 1, ratio: 0 }));
+  assert.throws(() => calc.calculateMixture('SnTe', 'Xx', { amount: 1 }));
+});
 process.exitCode = failures ? 1 : 0;

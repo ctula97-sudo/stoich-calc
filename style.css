@@ -26,6 +26,8 @@ button:hover { background: #4993f2; } .error { min-height: 20px; color: #ff8e8e;
 .mass-group { margin-left: auto; display: inline-flex; align-items: baseline; gap: 6px; }
 .card-mass { width: 6.4em; min-height: 0; text-align: right; font-size: 1.15rem; font-weight: 700; color: #9be2a8; background: #0e1725; border: 1px dashed #3b506c; border-radius: 8px; padding: 6px 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .card-mass:focus { outline: none; border-color: #2f80ed; border-style: solid; background: #0b1420; }
+.card-mass.static { border-color: transparent; background: transparent; }
+.sub-head { font-size: .95rem; color: #a9bad0; margin: 16px 0 8px; }
 .unit { color: #9dacbf; font-size: .9rem; }
 .card-sub { margin-top: 4px; font-size: .78rem; color: #9dacbf; }
 table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: .86rem; background: #182437; }
