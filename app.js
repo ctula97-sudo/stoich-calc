@@ -12,11 +12,7 @@
     var previous = element.value, list = [];
     try {
       if (mode.value === 'mixture') {
-        var merged = {};
-        calc.parseComposition(formula.value).forEach(function (term) {
-          Object.keys(calc.parseFormula(term.formula)).forEach(function (symbol) { merged[symbol] = 1; });
-        });
-        list = Object.keys(merged);
+        list = [];
       } else {
         list = Object.keys(calc.parseFormula(formula.value));
       }
@@ -63,11 +59,14 @@
   }
   function updateMode() {
     var current = mode.value;
+    var isMix = current === 'mixture';
     referenceWrap.hidden = current !== 'reference';
-    formula.placeholder = current === 'mixture' ? '예: SnTe(InSb)0.9' : '예: ZnGa2Se4';
+    var formulaWrap = $('formula-wrap');
+    if (formulaWrap) formulaWrap.hidden = isMix;
+    var rows = $('mixture-rows');
+    if (rows) rows.hidden = !isMix;
     $('amount-label').textContent = current === 'reference' ? '기준 원소 질량'
       : (current === 'total' ? '목표 총 질량' : '총 질량');
-    $('formula-label').textContent = current === 'mixture' ? '화합물 조성식' : '화학식';
   }
   function render(data, anchor, raw) {
     var cards = data.rows.map(function (row) {
@@ -92,6 +91,57 @@
       '<p class="verify">' + checkLine + '</p>' +
       '<p class="note">질량을 직접 고치면 나머지 원소가 그 값에 맞춰 다시 계산됩니다. 표시는 0.0001 g 해상도 기준.</p>';
     result.hidden = false;
+  }
+  var mixRowList = $('mix-row-list');
+  var addMixRowButton = $('add-mix-row');
+  var ROW_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  function relabelRows() {
+    Array.prototype.forEach.call(mixRowList.children, function (row, index) {
+      var letter = row.querySelector('.mix-letter');
+      if (letter) letter.textContent = index < ROW_LETTERS.length ? ROW_LETTERS[index] : String(index + 1);
+    });
+  }
+  function addMixRow(formulaText, ratio) {
+    var row = document.createElement('div');
+    row.className = 'mix-row';
+    row.innerHTML = '<span class="mix-letter"></span>' +
+      '<input class="mix-formula" type="text" placeholder="예: SnTe" autocomplete="off" aria-label="화합물">' +
+      '<input class="mix-ratio" type="number" min="0" step="any" inputmode="decimal" value="1" aria-label="몰 수(비율)">' +
+      '<button type="button" class="mix-del" aria-label="이 화합물 삭제">×</button>';
+    if (formulaText) row.querySelector('.mix-formula').value = formulaText;
+    if (ratio !== undefined && ratio !== null && ratio !== '') row.querySelector('.mix-ratio').value = String(ratio);
+    row.querySelector('.mix-del').addEventListener('click', function () {
+      if (mixRowList.children.length <= 1) {
+        row.querySelector('.mix-formula').value = '';
+        row.querySelector('.mix-ratio').value = '1';
+        return;
+      }
+      row.remove();
+      relabelRows();
+    });
+    mixRowList.appendChild(row);
+    relabelRows();
+    return row;
+  }
+  function readMixRows() {
+    return Array.prototype.map.call(mixRowList.children, function (row) {
+      return {
+        formula: row.querySelector('.mix-formula').value.trim(),
+        coefficient: row.querySelector('.mix-ratio').value
+      };
+    }).filter(function (term) { return term.formula; });
+  }
+  function fillMixRows(terms) {
+    mixRowList.innerHTML = '';
+    (terms && terms.length ? terms : [{ formula: '', coefficient: 1 }, { formula: '', coefficient: 1 }])
+      .forEach(function (term) { addMixRow(term.formula, term.coefficient); });
+  }
+  if (mixRowList && addMixRowButton) {
+    fillMixRows(null);
+    addMixRowButton.addEventListener('click', function () {
+      var row = addMixRow('', 1);
+      row.querySelector('.mix-formula').focus();
+    });
   }
   // 화합물 모드 결과: 화합물마다 질량 입력칸 + 원소별 총 칭량량
   var mixState = null;
@@ -125,7 +175,7 @@
       '<h3 class="sub-head">화합물별 질량 (직접 고치면 나머지가 같은 몰비로 따라옵니다)</h3><div class="cards" id="mix-terms">' + terms + '</div>' +
       '<h3 class="sub-head">원소별 총 칭량량</h3><div class="cards" id="mix-elements">' + elementCards(data.rows) + '</div>' +
       '<p class="verify" id="mix-verify">' + verifyLine(data) + '</p>' +
-      '<p class="note">괄호 계수는 화합물 몰비입니다. 표시는 0.0001 g 해상도 기준.</p>';
+      '<p class="note">몰 수는 화합물끼리의 비율입니다. 표시는 0.0001 g 해상도 기준.</p>';
     result.hidden = false;
   }
   function updateCompositionView(editedIndex, editedRaw) {
@@ -168,9 +218,14 @@
     event.preventDefault(); error.textContent = ''; result.hidden = true;
     try {
       if (mode.value === 'mixture') {
-        var mixed = calc.calculateComposition(formula.value, { amount: amount.value, unit: unit.value });
+        var terms = readMixRows();
+        if (!terms.length) throw new Error('화합물을 하나 이상 입력해 주세요.');
+        var mixed = calc.calculateFromTerms(terms, { amount: amount.value, unit: unit.value });
         renderComposition(mixed);
-        saveHistory({ formula: formula.value.trim(), mode: 'mixture', amount: amount.value, unit: unit.value });
+        saveHistory({
+          formula: terms.map(function (term) { return term.formula; }).join(' + '),
+          terms: terms, mode: 'mixture', amount: amount.value, unit: unit.value
+        });
         renderHistory();
         return;
       }
@@ -194,6 +249,7 @@
     var button = event.target.closest('.history-item'); if (!button) return;
     var item = readHistory()[Number(button.dataset.index)]; if (!item) return;
     formula.value = item.formula; mode.value = item.mode; amount.value = item.amount; unit.value = item.unit;
+    if (item.mode === 'mixture' && item.terms && item.terms.length) fillMixRows(item.terms);
     updateElements(); element.value = item.element || ''; updateMode(); form.requestSubmit();
   });
   updateMode(); updateElements(); renderHistory();

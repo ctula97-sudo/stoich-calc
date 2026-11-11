@@ -74,4 +74,21 @@ test('composition rebalance keeps the molar ratio', () => {
   assert.throws(() => calc.rebalanceComposition(data.terms, 9, 1));
   assert.throws(() => calc.rebalanceComposition(data.terms, 0, 0));
 });
+test('terms input: rows with formulas and mole ratios', () => {
+  const data = calc.calculateFromTerms([
+    { formula: 'SnTe', coefficient: '1' },
+    { formula: 'InSb', coefficient: '0.9' },
+    { formula: 'Bi2Te3', coefficient: '0.05' }
+  ], { amount: 1, unit: 'g' });
+  assert.strictEqual(data.terms.length, 3);
+  const termSum = data.terms.reduce((sum, t) => sum + t.massG, 0);
+  assert(Math.abs(termSum - 1) < 1e-12, 'compound masses must sum to the target');
+  const elementSum = data.rows.reduce((sum, r) => sum + r.massG, 0);
+  assert(Math.abs(elementSum - 1) < 1e-9);
+  assert(Math.abs(data.terms[1].massG / data.terms[0].massG - (0.9 * calc.molarMass({ In: 1, Sb: 1 })) / calc.molarMass({ Sn: 1, Te: 1 })) < 1e-12);
+  const defaulted = calc.calculateFromTerms([{ formula: 'SnTe', coefficient: '' }], { amount: 1 });
+  assert(Math.abs(defaulted.terms[0].massG - 1) < 1e-12);
+  assert.throws(() => calc.calculateFromTerms([{ formula: 'SnTe', coefficient: '0' }], { amount: 1 }));
+  assert.throws(() => calc.calculateFromTerms([], { amount: 1 }));
+});
 process.exitCode = failures ? 1 : 0;

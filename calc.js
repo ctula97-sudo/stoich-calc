@@ -165,19 +165,27 @@
     });
   }
 
-  // 조성식 + 총 질량 → 화합물별/원소별 칭량량
-  function calculateComposition(text, options) {
+  // 화합물 목록(화학식 + 몰 수) + 총 질량 → 화합물별/원소별 칭량량
+  function calculateFromTerms(terms, options) {
     options = options || {};
     var unitFactor = options.unit === 'mg' ? 0.001 : 1;
     var totalMassG = Number(options.amount) * unitFactor;
-    if (!Number.isFinite(totalMassG) || totalMassG <= 0) throw new Error('수량은 0보다 큰 숫자로 입력해 주세요.');
-    var prepared = parseComposition(text).map(function (term) {
+    if (!Number.isFinite(totalMassG) || totalMassG <= 0) throw new Error('총 질량은 0보다 큰 숫자로 입력해 주세요.');
+    if (!terms || !terms.length) throw new Error('화합물을 하나 이상 입력해 주세요.');
+    var prepared = terms.map(function (term) {
+      var coefficient = term.coefficient === undefined || term.coefficient === '' ? 1 : Number(term.coefficient);
+      if (!Number.isFinite(coefficient) || coefficient <= 0) throw new Error((term.formula || '화합물') + ' 의 몰 수는 0보다 커야 합니다.');
       var composition = parseFormula(term.formula);
-      return { formula: term.formula, coefficient: term.coefficient, composition: composition, molarMass: molarMass(composition) };
+      return { formula: String(term.formula).trim(), coefficient: coefficient, composition: composition, molarMass: molarMass(composition) };
     });
     var perUnitMass = prepared.reduce(function (sum, term) { return sum + term.coefficient * term.molarMass; }, 0);
-    var terms = scaledTerms(prepared, totalMassG / perUnitMass);
-    return { terms: terms, totalMassG: totalMassG, perUnitMass: perUnitMass, rows: elementRows(terms, totalMassG) };
+    var scaled = scaledTerms(prepared, totalMassG / perUnitMass);
+    return { terms: scaled, totalMassG: totalMassG, perUnitMass: perUnitMass, rows: elementRows(scaled, totalMassG) };
+  }
+
+  // 조성식 + 총 질량 → 화합물별/원소별 칭량량
+  function calculateComposition(text, options) {
+    return calculateFromTerms(parseComposition(text), options);
   }
 
   // 화합물 하나의 질량을 직접 지정 → 나머지는 같은 몰비로 따라온다
@@ -193,7 +201,7 @@
 
   return {
     atomicWeights: weights, parseFormula: parseFormula, molarMass: molarMass,
-    calculate: calculate, parseComposition: parseComposition,
+    calculate: calculate, parseComposition: parseComposition, calculateFromTerms: calculateFromTerms,
     calculateComposition: calculateComposition, rebalanceComposition: rebalanceComposition
   };
 }));

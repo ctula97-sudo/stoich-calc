@@ -38,17 +38,35 @@ HARNESS = """
         out.push('EDIT Sn=2 -> ' + vals + ' | ' + (document.querySelector('#result .verify') || {}).innerText);
       } else { out.push('EDIT FAILED: no Sn field'); }
 
-      // 화합물 모드: SnTe(InSb)0.9, 총 1 g
+      // 화합물 모드: 행마다 화학식 + 몰 수
       document.getElementById('mode').value = 'mixture';
       document.getElementById('mode').dispatchEvent(new Event('change'));
-      out.push('MIX ref hidden=' + document.getElementById('reference-wrap').hidden +
-               ' label=' + document.getElementById('formula-label').textContent);
-      document.getElementById('formula').value = 'SnTe(InSb)0.9';
+      out.push('MIX rows=' + document.querySelectorAll('.mix-row').length +
+               ' formulaHidden=' + document.getElementById('formula-wrap').hidden +
+               ' rowsHidden=' + document.getElementById('mixture-rows').hidden);
+      var rows = document.querySelectorAll('.mix-row');
+      rows[0].querySelector('.mix-formula').value = 'SnTe';
+      rows[0].querySelector('.mix-ratio').value = '1';
+      rows[1].querySelector('.mix-formula').value = 'InSb';
+      rows[1].querySelector('.mix-ratio').value = '0.9';
       document.getElementById('amount').value = '1';
       document.getElementById('unit').value = 'g';
       document.getElementById('calculator').dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));
       out.push('MIX err=[' + document.getElementById('error').textContent + ']');
       out.push('MIX ' + (document.getElementById('result').innerText || '').replace(/\\\\s+/g, ' '));
+
+      // 화합물 3종: 행 추가
+      document.getElementById('add-mix-row').click();
+      var rows3 = document.querySelectorAll('.mix-row');
+      rows3[2].querySelector('.mix-formula').value = 'Bi2Te3';
+      rows3[2].querySelector('.mix-ratio').value = '0.05';
+      document.getElementById('calculator').dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));
+      out.push('MIX3 rows=' + document.querySelectorAll('.mix-row').length +
+               ' letters=' + Array.prototype.map.call(document.querySelectorAll('.mix-letter'), function (l) { return l.textContent; }).join('') +
+               ' err=[' + document.getElementById('error').textContent + ']');
+      out.push('MIX3 ' + (document.getElementById('result').innerText || '').replace(/\\\\s+/g, ' '));
+
+      // 화합물 카드 질량 직접 수정
       var termInput = document.querySelector('.card-mass[data-term="0"]');
       if (termInput) {
         termInput.value = '2';
@@ -56,12 +74,6 @@ HARNESS = """
         var termVals = Array.prototype.map.call(document.querySelectorAll('.card-mass[data-term]'), function (f) { return f.dataset.term + '=' + f.value; }).join(',');
         out.push('MIX-EDIT ' + termVals + ' | ' + (document.getElementById('mix-verify') || {}).innerText);
       } else { out.push('MIX-EDIT FAILED: no term field'); }
-
-      // 화합물 3종
-      document.getElementById('formula').value = 'SnTe(InSb)0.9(Bi2Te3)0.05';
-      document.getElementById('calculator').dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));
-      out.push('MIX3 err=[' + document.getElementById('error').textContent + '] terms=' + document.querySelectorAll('.card-mass[data-term]').length);
-      out.push('MIX3 ' + (document.getElementById('result').innerText || '').replace(/\\\\s+/g, ' '));
 
       // 최근 계산: 개별 삭제 · 전체 지우기 버튼 유무
       var before = document.querySelectorAll('.history-row').length;

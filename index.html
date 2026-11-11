@@ -50,6 +50,13 @@ button:hover { background: #4993f2; } .error { min-height: 20px; color: #ff8e8e;
 .comment-editor { margin-top: 8px; }
 .comment-edit { width: 100%; min-height: 72px; background: #0e1725; border: 1px solid #33455f; border-radius: 8px; color: #e6eefb; padding: 8px 10px; font: inherit; font-size: .9rem; resize: vertical; }
 .edited { color: #7f8fa6; font-size: .72rem; }
+.mix-head, .mix-row { display: grid; grid-template-columns: 16px minmax(0, 1fr) 84px 34px; gap: 6px; align-items: center; }
+.mix-head { font-size: .72rem; color: #7f8fa6; margin-bottom: 4px; }
+.mix-row { margin-bottom: 6px; }
+.mix-letter { font-size: .8rem; color: #9dacbf; text-align: center; }
+.mix-row input { min-height: 40px; padding: 8px 10px; font-size: .95rem; }
+.mix-del { min-height: 40px; padding: 0; background: #16202f; border: 1px solid #2b3a50; color: #92a3b8; font-size: 1rem; border-radius: 8px; }
+.mix-del:hover { color: #ff8d8d; border-color: #6b2b2b; background: #16202f; }
 .unit { color: #9dacbf; font-size: .9rem; }
 .card-sub { margin-top: 4px; font-size: .78rem; color: #9dacbf; }
 table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: .86rem; background: #182437; }
@@ -66,8 +73,13 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
   <main>
     <header><h1>화학량론 계산기</h1><p>재료 실험을 위한 원소별 칭량량 계산</p></header>
     <form id="calculator" novalidate>
-      <label>계산 모드<select id="mode"><option value="reference">원소별 (기준 원소)</option><option value="total">원소별 (총 질량)</option><option value="mixture">화합물 혼합 (조성식)</option></select></label>
-      <label><span id="formula-label">화학식</span><input id="formula" type="text" placeholder="예: ZnGa2Se4" autocomplete="off"></label>
+      <label>계산 모드<select id="mode"><option value="reference">원소별 (기준 원소)</option><option value="total">원소별 (총 질량)</option><option value="mixture">화합물 혼합 (여러 화합물)</option></select></label>
+      <label id="formula-wrap"><span id="formula-label">화학식</span><input id="formula" type="text" placeholder="예: ZnGa2Se4" autocomplete="off"></label>
+      <div id="mixture-rows" hidden>
+        <div class="mix-head"><span></span><span>화합물</span><span>몰 수</span></div>
+        <div id="mix-row-list"></div>
+        <button type="button" id="add-mix-row" class="ghost">+ 화합물 추가</button>
+      </div>
       <div id="reference-wrap"><label>기준 원소<select id="element"></select></label></div>
       <label><span id="amount-label">기준 원소 질량</span><input id="amount" type="number" min="0" step="any" inputmode="decimal" placeholder="예: 1.0000"></label>
       <label>단위<select id="unit"><option value="g">g</option><option value="mg">mg</option></select></label>
@@ -254,19 +266,27 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
     });
   }
 
-  // 조성식 + 총 질량 → 화합물별/원소별 칭량량
-  function calculateComposition(text, options) {
+  // 화합물 목록(화학식 + 몰 수) + 총 질량 → 화합물별/원소별 칭량량
+  function calculateFromTerms(terms, options) {
     options = options || {};
     var unitFactor = options.unit === 'mg' ? 0.001 : 1;
     var totalMassG = Number(options.amount) * unitFactor;
-    if (!Number.isFinite(totalMassG) || totalMassG <= 0) throw new Error('수량은 0보다 큰 숫자로 입력해 주세요.');
-    var prepared = parseComposition(text).map(function (term) {
+    if (!Number.isFinite(totalMassG) || totalMassG <= 0) throw new Error('총 질량은 0보다 큰 숫자로 입력해 주세요.');
+    if (!terms || !terms.length) throw new Error('화합물을 하나 이상 입력해 주세요.');
+    var prepared = terms.map(function (term) {
+      var coefficient = term.coefficient === undefined || term.coefficient === '' ? 1 : Number(term.coefficient);
+      if (!Number.isFinite(coefficient) || coefficient <= 0) throw new Error((term.formula || '화합물') + ' 의 몰 수는 0보다 커야 합니다.');
       var composition = parseFormula(term.formula);
-      return { formula: term.formula, coefficient: term.coefficient, composition: composition, molarMass: molarMass(composition) };
+      return { formula: String(term.formula).trim(), coefficient: coefficient, composition: composition, molarMass: molarMass(composition) };
     });
     var perUnitMass = prepared.reduce(function (sum, term) { return sum + term.coefficient * term.molarMass; }, 0);
-    var terms = scaledTerms(prepared, totalMassG / perUnitMass);
-    return { terms: terms, totalMassG: totalMassG, perUnitMass: perUnitMass, rows: elementRows(terms, totalMassG) };
+    var scaled = scaledTerms(prepared, totalMassG / perUnitMass);
+    return { terms: scaled, totalMassG: totalMassG, perUnitMass: perUnitMass, rows: elementRows(scaled, totalMassG) };
+  }
+
+  // 조성식 + 총 질량 → 화합물별/원소별 칭량량
+  function calculateComposition(text, options) {
+    return calculateFromTerms(parseComposition(text), options);
   }
 
   // 화합물 하나의 질량을 직접 지정 → 나머지는 같은 몰비로 따라온다
@@ -282,7 +302,7 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
 
   return {
     atomicWeights: weights, parseFormula: parseFormula, molarMass: molarMass,
-    calculate: calculate, parseComposition: parseComposition,
+    calculate: calculate, parseComposition: parseComposition, calculateFromTerms: calculateFromTerms,
     calculateComposition: calculateComposition, rebalanceComposition: rebalanceComposition
   };
 }));
@@ -303,11 +323,7 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
     var previous = element.value, list = [];
     try {
       if (mode.value === 'mixture') {
-        var merged = {};
-        calc.parseComposition(formula.value).forEach(function (term) {
-          Object.keys(calc.parseFormula(term.formula)).forEach(function (symbol) { merged[symbol] = 1; });
-        });
-        list = Object.keys(merged);
+        list = [];
       } else {
         list = Object.keys(calc.parseFormula(formula.value));
       }
@@ -354,11 +370,14 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
   }
   function updateMode() {
     var current = mode.value;
+    var isMix = current === 'mixture';
     referenceWrap.hidden = current !== 'reference';
-    formula.placeholder = current === 'mixture' ? '예: SnTe(InSb)0.9' : '예: ZnGa2Se4';
+    var formulaWrap = $('formula-wrap');
+    if (formulaWrap) formulaWrap.hidden = isMix;
+    var rows = $('mixture-rows');
+    if (rows) rows.hidden = !isMix;
     $('amount-label').textContent = current === 'reference' ? '기준 원소 질량'
       : (current === 'total' ? '목표 총 질량' : '총 질량');
-    $('formula-label').textContent = current === 'mixture' ? '화합물 조성식' : '화학식';
   }
   function render(data, anchor, raw) {
     var cards = data.rows.map(function (row) {
@@ -383,6 +402,57 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
       '<p class="verify">' + checkLine + '</p>' +
       '<p class="note">질량을 직접 고치면 나머지 원소가 그 값에 맞춰 다시 계산됩니다. 표시는 0.0001 g 해상도 기준.</p>';
     result.hidden = false;
+  }
+  var mixRowList = $('mix-row-list');
+  var addMixRowButton = $('add-mix-row');
+  var ROW_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  function relabelRows() {
+    Array.prototype.forEach.call(mixRowList.children, function (row, index) {
+      var letter = row.querySelector('.mix-letter');
+      if (letter) letter.textContent = index < ROW_LETTERS.length ? ROW_LETTERS[index] : String(index + 1);
+    });
+  }
+  function addMixRow(formulaText, ratio) {
+    var row = document.createElement('div');
+    row.className = 'mix-row';
+    row.innerHTML = '<span class="mix-letter"></span>' +
+      '<input class="mix-formula" type="text" placeholder="예: SnTe" autocomplete="off" aria-label="화합물">' +
+      '<input class="mix-ratio" type="number" min="0" step="any" inputmode="decimal" value="1" aria-label="몰 수(비율)">' +
+      '<button type="button" class="mix-del" aria-label="이 화합물 삭제">×</button>';
+    if (formulaText) row.querySelector('.mix-formula').value = formulaText;
+    if (ratio !== undefined && ratio !== null && ratio !== '') row.querySelector('.mix-ratio').value = String(ratio);
+    row.querySelector('.mix-del').addEventListener('click', function () {
+      if (mixRowList.children.length <= 1) {
+        row.querySelector('.mix-formula').value = '';
+        row.querySelector('.mix-ratio').value = '1';
+        return;
+      }
+      row.remove();
+      relabelRows();
+    });
+    mixRowList.appendChild(row);
+    relabelRows();
+    return row;
+  }
+  function readMixRows() {
+    return Array.prototype.map.call(mixRowList.children, function (row) {
+      return {
+        formula: row.querySelector('.mix-formula').value.trim(),
+        coefficient: row.querySelector('.mix-ratio').value
+      };
+    }).filter(function (term) { return term.formula; });
+  }
+  function fillMixRows(terms) {
+    mixRowList.innerHTML = '';
+    (terms && terms.length ? terms : [{ formula: '', coefficient: 1 }, { formula: '', coefficient: 1 }])
+      .forEach(function (term) { addMixRow(term.formula, term.coefficient); });
+  }
+  if (mixRowList && addMixRowButton) {
+    fillMixRows(null);
+    addMixRowButton.addEventListener('click', function () {
+      var row = addMixRow('', 1);
+      row.querySelector('.mix-formula').focus();
+    });
   }
   // 화합물 모드 결과: 화합물마다 질량 입력칸 + 원소별 총 칭량량
   var mixState = null;
@@ -416,7 +486,7 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
       '<h3 class="sub-head">화합물별 질량 (직접 고치면 나머지가 같은 몰비로 따라옵니다)</h3><div class="cards" id="mix-terms">' + terms + '</div>' +
       '<h3 class="sub-head">원소별 총 칭량량</h3><div class="cards" id="mix-elements">' + elementCards(data.rows) + '</div>' +
       '<p class="verify" id="mix-verify">' + verifyLine(data) + '</p>' +
-      '<p class="note">괄호 계수는 화합물 몰비입니다. 표시는 0.0001 g 해상도 기준.</p>';
+      '<p class="note">몰 수는 화합물끼리의 비율입니다. 표시는 0.0001 g 해상도 기준.</p>';
     result.hidden = false;
   }
   function updateCompositionView(editedIndex, editedRaw) {
@@ -459,9 +529,14 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
     event.preventDefault(); error.textContent = ''; result.hidden = true;
     try {
       if (mode.value === 'mixture') {
-        var mixed = calc.calculateComposition(formula.value, { amount: amount.value, unit: unit.value });
+        var terms = readMixRows();
+        if (!terms.length) throw new Error('화합물을 하나 이상 입력해 주세요.');
+        var mixed = calc.calculateFromTerms(terms, { amount: amount.value, unit: unit.value });
         renderComposition(mixed);
-        saveHistory({ formula: formula.value.trim(), mode: 'mixture', amount: amount.value, unit: unit.value });
+        saveHistory({
+          formula: terms.map(function (term) { return term.formula; }).join(' + '),
+          terms: terms, mode: 'mixture', amount: amount.value, unit: unit.value
+        });
         renderHistory();
         return;
       }
@@ -485,6 +560,7 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
     var button = event.target.closest('.history-item'); if (!button) return;
     var item = readHistory()[Number(button.dataset.index)]; if (!item) return;
     formula.value = item.formula; mode.value = item.mode; amount.value = item.amount; unit.value = item.unit;
+    if (item.mode === 'mixture' && item.terms && item.terms.length) fillMixRows(item.terms);
     updateElements(); element.value = item.element || ''; updateMode(); form.requestSubmit();
   });
   updateMode(); updateElements(); renderHistory();
