@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="style.css">
+  <title>화학량론 계산기</title>
+</head>
+<body>
+  <main>
+    <header><h1>화학량론 계산기</h1><p>재료 실험을 위한 원소별 칭량량 계산</p></header>
+    <form id="calculator" novalidate>
+      <label>계산 모드<select id="mode"><option value="reference">기준 원소</option><option value="total">총 질량</option></select></label>
+      <label>화학식<input id="formula" type="text" placeholder="예: ZnGa2Se4" autocomplete="off"></label>
+      <div id="reference-wrap"><label>기준 원소<select id="element"></select></label></div>
+      <label><span id="amount-label">기준 원소 질량</span><input id="amount" type="number" min="0" step="any" inputmode="decimal" placeholder="예: 1.0000"></label>
+      <label>단위<select id="unit"><option value="g">g</option><option value="mg">mg</option></select></label>
+      <button type="submit">계산하기</button>
+    </form>
+    <p id="error" class="error" role="alert"></p>
+    <section id="result" hidden><h2>계산 결과</h2></section>
+    <section><h2>최근 계산</h2><div id="history"></div></section>
+    <section id="feedback">
+      <h2>의견 남기기</h2>
+      <p class="note">로그인 없이 보낼 수 있습니다. 내용을 적고 보내기를 누르면 메일 앱이 열립니다.</p>
+      <textarea id="comment" rows="4" placeholder="예: 과잉 첨가 옵션이 있으면 좋겠습니다 / 이 계산이 이상합니다"></textarea>
+      <button type="button" id="send-comment">메일로 보내기</button>
+      <p id="comment-status" class="note" role="status"></p>
+    </section>
+  </main>
+  <script src="calc.js"></script><script src="app.js"></script>
+</body>
+</html>

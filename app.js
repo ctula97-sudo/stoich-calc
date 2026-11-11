@@ -107,5 +107,21 @@
     updateElements(); element.value = item.element || ''; updateMode(); form.requestSubmit();
   });
   updateMode(); updateElements(); renderHistory();
+  // 의견 보내기: 서버 없이 메일 앱으로 전달
+  var FEEDBACK_EMAIL = 'ctula97@gmail.com';
+  function buildFeedbackHref(body) {
+    return 'mailto:' + FEEDBACK_EMAIL + '?subject=' + encodeURIComponent('[화학량론 계산기 의견]') + '&body=' + encodeURIComponent(body);
+  }
+  window.FeedbackMail = { href: buildFeedbackHref };
+  var commentBox = $('comment'), commentStatus = $('comment-status'), sendButton = $('send-comment');
+  if (sendButton) {
+    sendButton.addEventListener('click', function () {
+      var body = commentBox.value.trim();
+      if (!body) { commentStatus.textContent = '보낼 내용을 먼저 적어 주세요.'; return; }
+      window.location.href = buildFeedbackHref(body);
+      commentStatus.textContent = '메일 앱이 열리면 그대로 전송해 주세요. 앱이 없으면 내용을 복사해 주세요.';
+      commentBox.select();
+    });
+  }
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(function () {});
 }());

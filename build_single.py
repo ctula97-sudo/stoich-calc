@@ -8,7 +8,7 @@ parser.add_argument("--out", default="stoich-calc.html", help="output file name 
 parser.add_argument("--keep-manifest", action="store_true", help="keep the PWA manifest link (for web deployment)")
 args = parser.parse_args()
 
-html = (root / "index.html").read_text(encoding="utf-8")
+html = (root / "template.html").read_text(encoding="utf-8")
 css = (root / "style.css").read_text(encoding="utf-8")
 calc = (root / "calc.js").read_text(encoding="utf-8")
 app = (root / "app.js").read_text(encoding="utf-8")
