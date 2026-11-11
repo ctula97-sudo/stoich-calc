@@ -249,7 +249,7 @@
     var button = event.target.closest('.history-item'); if (!button) return;
     var item = readHistory()[Number(button.dataset.index)]; if (!item) return;
     formula.value = item.formula; mode.value = item.mode; amount.value = item.amount; unit.value = item.unit;
-    if (item.mode === 'mixture' && item.terms && item.terms.length) fillMixRows(item.terms);
+    if (item.mode === 'mixture') fillMixRows(item.terms || null);
     updateElements(); element.value = item.element || ''; updateMode(); form.requestSubmit();
   });
   updateMode(); updateElements(); renderHistory();
