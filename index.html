@@ -285,10 +285,10 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
     updateElements(); element.value = item.element || ''; updateMode(); form.requestSubmit();
   });
   updateMode(); updateElements(); renderHistory();
-  // 댓글: 자체 API(익명). 정적 사이트라 서버는 이 NAS에서 돌고, Tailscale Funnel로 노출한다.
-  var API_BASE = (location.protocol === 'file:' || location.hostname === '127.0.0.1' || location.hostname === 'localhost')
-    ? 'http://127.0.0.1:8099/comments'
-    : 'https://nas.tail3a46d0.ts.net/comments';
+  // 댓글: 자체 API(익명). 서버 주소는 같은 사이트의 config.json 에서 읽는다
+  // (터널 주소가 바뀌면 config.json 만 갱신하면 되고, 앱 재배포가 필요 없다).
+  var API = { base: null };
+  var LOCAL = location.protocol === 'file:' || location.hostname === '127.0.0.1' || location.hostname === 'localhost';
   function escapeHtml(text) {
     return String(text).replace(/[&<>"']/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
@@ -307,20 +307,35 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
     }).join('');
   }
   function loadComments() {
-    fetch(API_BASE + '?t=' + Date.now(), { cache: 'no-store' })
+    if (!API.base) return;
+    fetch(API.base + '?t=' + Date.now(), { cache: 'no-store' })
       .then(function (response) { return response.json(); })
       .then(function (data) { renderComments(data.comments || []); })
       .catch(function () {
         commentList.innerHTML = '<p class="muted">댓글 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.</p>';
       });
   }
+  function initComments() {
+    if (LOCAL) { API.base = 'http://127.0.0.1:8099/comments'; loadComments(); return; }
+    fetch('config.json?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (response) { return response.json(); })
+      .then(function (config) {
+        API.base = config && config.apiBase;
+        if (!API.base) throw new Error('no apiBase');
+        loadComments();
+      })
+      .catch(function () {
+        commentList.innerHTML = '<p class="muted">댓글 서버 주소를 불러오지 못했습니다.</p>';
+      });
+  }
   if (sendButton) {
     sendButton.addEventListener('click', function () {
       var body = commentBox.value.trim();
       if (!body) { commentStatus.textContent = '남길 내용을 먼저 적어 주세요.'; return; }
+      if (!API.base) { commentStatus.textContent = '댓글 서버에 연결하지 못했습니다.'; return; }
       sendButton.disabled = true;
       commentStatus.textContent = '보내는 중…';
-      fetch(API_BASE, {
+      fetch(API.base, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: commentName.value, body: body })
@@ -337,7 +352,7 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
         commentStatus.textContent = '댓글 서버에 연결하지 못했습니다.';
       });
     });
-    loadComments();
+    initComments();
   }
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(function () {});
 }());
