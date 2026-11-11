@@ -9,6 +9,14 @@ HARNESS = """
   <script>
     window.addEventListener('load', function () {
       var out = [];
+      function dump() {
+        var pre = document.createElement('pre');
+        pre.id = '__smoke';
+        pre.textContent = out.join('\\n');
+        var old = document.getElementById('__smoke');
+        if (old) old.remove();
+        document.body.appendChild(pre);
+      }
       function run(f, el, amt) {
         document.getElementById('formula').value = f;
         document.getElementById('formula').dispatchEvent(new Event('input', {bubbles: true}));
@@ -17,7 +25,7 @@ HARNESS = """
         document.getElementById('amount').value = amt;
         document.getElementById('calculator').dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));
         out.push('CASE ' + f + ' options=[' + opts + '] err=[' + document.getElementById('error').textContent + ']');
-        out.push((document.getElementById('result').innerText || '').replace(/\\s+/g, ' '));
+        out.push((document.getElementById('result').innerText || '').replace(/\\\\s+/g, ' '));
       }
       run('ZnGa2Se4', 'Zn', '1');
       run('Cu2ZnSnS4', 'Cu', '0.5');
@@ -42,25 +50,52 @@ HARNESS = """
       document.getElementById('unit').value = 'g';
       document.getElementById('calculator').dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));
       out.push('MIX err=[' + document.getElementById('error').textContent + ']');
-      out.push('MIX ' + (document.getElementById('result').innerText || '').replace(/\\s+/g, ' '));
+      out.push('MIX ' + (document.getElementById('result').innerText || '').replace(/\\\\s+/g, ' '));
 
+      // 최근 계산: 개별 삭제 · 전체 지우기 버튼 유무
+      var before = document.querySelectorAll('.history-row').length;
+      var delBtn = document.querySelector('.history-del');
+      if (delBtn) delBtn.click();
+      out.push('HISTORY rows ' + before + ' -> ' + document.querySelectorAll('.history-row').length +
+               ' clearHidden=' + document.getElementById('clear-history').hidden);
+      out.push('HISTORY text -> ' + document.getElementById('history').innerText.replace(/\\\\s+/g, ' '));
+
+      window.confirm = function () { return true; };
       var send = document.getElementById('send-comment');
       if (send) {
         send.dispatchEvent(new Event('click'));
         out.push('COMMENT empty -> [' + document.getElementById('comment-status').textContent + ']');
         document.getElementById('comment-name').value = '테스터';
-        document.getElementById('comment').value = '과잉 첨가 옵션 부탁드립니다';
+        document.getElementById('comment').value = '스모크 확인용 글';
         send.dispatchEvent(new Event('click'));
       } else { out.push('COMMENT FAILED: no send button'); }
+      dump();
 
       setTimeout(function () {
         var list = document.getElementById('comment-list');
-        out.push('COMMENT list -> [' + (list ? list.innerText.replace(/\\s+/g, ' ') : 'none') + ']');
+        out.push('COMMENT list -> [' + (list ? list.innerText.replace(/\\\\s+/g, ' ') : 'none') + ']');
         out.push('COMMENT status -> [' + document.getElementById('comment-status').textContent + ']');
-        var pre = document.createElement('pre');
-        pre.id = '__smoke';
-        pre.textContent = out.join('\\n');
-        document.body.appendChild(pre);
+        var editBtn = document.querySelector('#comment-list button[data-act="edit"]');
+        out.push('COMMENT actions -> ' + (editBtn ? 'present' : 'none'));
+        if (!editBtn) { dump(); return; }
+        editBtn.click();
+        var ta = document.querySelector('.comment-edit');
+        out.push('COMMENT editor -> ' + (ta ? 'open' : 'missing'));
+        if (ta) {
+          ta.value = '수정된 의견입니다';
+          document.querySelector('button[data-act="save"]').click();
+        }
+        setTimeout(function () {
+          out.push('AFTER EDIT -> ' + document.getElementById('comment-list').innerText.replace(/\\\\s+/g, ' '));
+          dump();
+          var del = document.querySelector('#comment-list button[data-act="del"]');
+          if (del) del.click();
+          setTimeout(function () {
+            out.push('AFTER DELETE -> ' + document.getElementById('comment-list').innerText.replace(/\\\\s+/g, ' '));
+            out.push('STATUS -> [' + document.getElementById('comment-status').textContent + ']');
+            dump();
+          }, 1500);
+        }, 1500);
       }, 1500);
     });
   </script>

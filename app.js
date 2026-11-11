@@ -43,10 +43,12 @@
   }
   function renderHistory() {
     var list = readHistory();
+    var clearButton = $('clear-history');
+    if (clearButton) clearButton.hidden = !list.length;
     historyBox.innerHTML = list.length ? list.map(function (item, i) {
-      return '<button type="button" class="history-item" data-index="' + i + '">' + item.formula + ' · ' +
+      return '<div class="history-row"><button type="button" class="history-item" data-index="' + i + '">' + item.formula + ' · ' +
         (item.mode === 'reference' ? '기준 ' + item.element : (item.mode === 'mixture' ? '× ' + (item.formulaB || '') + ' (몰비 ' + (item.ratio || 1) + ')' : '총 질량')) +
-        ' · ' + item.amount + item.unit + '</button>';
+        ' · ' + item.amount + item.unit + '</button><button type="button" class="history-del" data-del="' + i + '" aria-label="이 기록 삭제">×</button></div>';
     }).join('') : '<p class="muted">아직 계산 기록이 없습니다.</p>';
   }
   function updateMode() {
@@ -138,6 +140,13 @@
   mode.addEventListener('change', updateMode);
   formula.addEventListener('input', updateElements);
   historyBox.addEventListener('click', function (event) {
+    var delButton = event.target.closest('.history-del');
+    if (delButton) {
+      var rest = readHistory(); rest.splice(Number(delButton.dataset.del), 1);
+      try { localStorage.setItem(storageKey, JSON.stringify(rest)); } catch (_) {}
+      renderHistory();
+      return;
+    }
     var button = event.target.closest('.history-item'); if (!button) return;
     var item = readHistory()[Number(button.dataset.index)]; if (!item) return;
     formula.value = item.formula; mode.value = item.mode; amount.value = item.amount; unit.value = item.unit;
@@ -146,6 +155,13 @@
     updateElements(); element.value = item.element || ''; updateMode(); form.requestSubmit();
   });
   updateMode(); updateElements(); renderHistory();
+  var clearButton = $('clear-history');
+  if (clearButton) clearButton.addEventListener('click', function () {
+    if (!readHistory().length) return;
+    if (!confirm('최근 계산 기록을 모두 지울까요?')) return;
+    try { localStorage.removeItem(storageKey); } catch (_) {}
+    renderHistory();
+  });
   // 댓글: 자체 API(익명). 서버 주소는 같은 사이트의 config.json 에서 읽는다
   // (터널 주소가 바뀌면 config.json 만 갱신하면 되고, 앱 재배포가 필요 없다).
   var API = { base: null };
@@ -157,14 +173,30 @@
   }
   var commentBox = $('comment'), commentName = $('comment-name'), commentStatus = $('comment-status');
   var commentList = $('comment-list'), sendButton = $('send-comment');
+  // 내가 쓴 글의 수정/삭제 열쇠는 이 기기 브라우저에만 저장한다 (로그인 없이 본인 글만 관리).
+  var tokenKey = 'stoich-comment-tokens-v1';
+  function readTokens() { try { return JSON.parse(localStorage.getItem(tokenKey) || '{}'); } catch (_) { return {}; } }
+  function writeToken(id, token) {
+    try { var map = readTokens(); map[id] = token; localStorage.setItem(tokenKey, JSON.stringify(map)); } catch (_) {}
+  }
+  function dropToken(id) {
+    try { var map = readTokens(); delete map[id]; localStorage.setItem(tokenKey, JSON.stringify(map)); } catch (_) {}
+  }
   function renderComments(list) {
     if (!list.length) {
       commentList.innerHTML = '<p class="muted">아직 남긴 의견이 없습니다. 첫 의견을 남겨 보세요.</p>';
       return;
     }
+    var mine = readTokens();
     commentList.innerHTML = list.map(function (item) {
-      return '<article class="comment"><div class="comment-head"><b>' + escapeHtml(item.name) + '</b><time>' +
-        escapeHtml(String(item.created_at).slice(0, 16)) + '</time></div><p>' + escapeHtml(item.body) + '</p></article>';
+      var editable = !!mine[item.id];
+      var actions = editable ? '<div class="comment-actions">' +
+        '<button type="button" data-act="edit" data-id="' + item.id + '">수정</button>' +
+        '<button type="button" data-act="del" data-id="' + item.id + '">삭제</button></div>' : '';
+      var edited = item.updated_at ? ' <span class="edited">(수정됨)</span>' : '';
+      return '<article class="comment" data-id="' + item.id + '"><div class="comment-head"><b>' + escapeHtml(item.name) + '</b><time>' +
+        escapeHtml(String(item.created_at).slice(0, 16)) + edited + '</time></div>' +
+        '<p>' + escapeHtml(item.body) + '</p>' + actions + '</article>';
     }).join('');
   }
   function loadComments() {
@@ -189,6 +221,69 @@
         commentList.innerHTML = '<p class="muted">댓글 서버 주소를 불러오지 못했습니다.</p>';
       });
   }
+  commentList.addEventListener('click', function (event) {
+    var button = event.target.closest ? event.target.closest('button[data-act]') : null;
+    if (!button) return;
+    var act = button.dataset.act, id = button.dataset.id;
+    var article = button.closest('.comment');
+    if (!article || !API.base) return;
+    var token = readTokens()[id];
+    if (!token) { commentStatus.textContent = '이 글을 쓴 기기에서만 수정·삭제할 수 있습니다.'; return; }
+    var paragraph = article.querySelector('p');
+    var actions = article.querySelector('.comment-actions');
+    if (act === 'cancel') {
+      var editor = article.querySelector('.comment-editor');
+      if (editor) editor.remove();
+      if (paragraph) paragraph.style.display = '';
+      if (actions) actions.style.display = '';
+      return;
+    }
+    if (act === 'edit') {
+      if (!paragraph || article.querySelector('.comment-editor')) return;
+      paragraph.style.display = 'none';
+      if (actions) actions.style.display = 'none';
+      var box = document.createElement('div');
+      box.className = 'comment-editor';
+      box.innerHTML = '<textarea class="comment-edit" maxlength="1000"></textarea>' +
+        '<div class="comment-actions"><button type="button" data-act="save" data-id="' + id + '">저장</button>' +
+        '<button type="button" data-act="cancel" data-id="' + id + '">취소</button></div>';
+      box.querySelector('textarea').value = paragraph.textContent;
+      paragraph.insertAdjacentElement('afterend', box);
+      box.querySelector('textarea').focus();
+      return;
+    }
+    if (act === 'save') {
+      var text = article.querySelector('.comment-edit');
+      var body = text ? text.value.trim() : '';
+      if (!body) { commentStatus.textContent = '내용을 적어 주세요.'; return; }
+      commentStatus.textContent = '저장 중…';
+      fetch(API.base + '/' + id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+        body: JSON.stringify({ body: body })
+      }).then(function (response) {
+        return response.json().then(function (data) { return { ok: response.ok, data: data }; });
+      }).then(function (result) {
+        if (!result.ok) { commentStatus.textContent = result.data.error || '수정하지 못했습니다.'; return; }
+        commentStatus.textContent = '수정했습니다.';
+        loadComments();
+      }).catch(function () { commentStatus.textContent = '댓글 서버에 연결하지 못했습니다.'; });
+      return;
+    }
+    if (act === 'del') {
+      if (!confirm('이 의견을 삭제할까요?')) return;
+      commentStatus.textContent = '삭제 중…';
+      fetch(API.base + '/' + id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token } })
+        .then(function (response) {
+          return response.json().then(function (data) { return { ok: response.ok, data: data }; });
+        }).then(function (result) {
+          if (!result.ok) { commentStatus.textContent = result.data.error || '삭제하지 못했습니다.'; return; }
+          dropToken(id);
+          commentStatus.textContent = '삭제했습니다.';
+          loadComments();
+        }).catch(function () { commentStatus.textContent = '댓글 서버에 연결하지 못했습니다.'; });
+    }
+  });
   if (sendButton) {
     sendButton.addEventListener('click', function () {
       var body = commentBox.value.trim();
@@ -206,7 +301,8 @@
         sendButton.disabled = false;
         if (!result.ok) { commentStatus.textContent = result.data.error || '남기지 못했습니다.'; return; }
         commentBox.value = '';
-        commentStatus.textContent = '남겼습니다.';
+        if (result.data && result.data.id && result.data.token) writeToken(result.data.id, result.data.token);
+        commentStatus.textContent = '남겼습니다. (이 기기에서 수정·삭제할 수 있습니다)';
         loadComments();
       }).catch(function () {
         sendButton.disabled = false;

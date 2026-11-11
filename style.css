@@ -28,6 +28,19 @@ button:hover { background: #4993f2; } .error { min-height: 20px; color: #ff8e8e;
 .card-mass:focus { outline: none; border-color: #2f80ed; border-style: solid; background: #0b1420; }
 .card-mass.static { border-color: transparent; background: transparent; }
 .sub-head { font-size: .95rem; color: #a9bad0; margin: 16px 0 8px; }
+.row-between { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ghost { background: transparent; border: 1px solid #33455f; color: #a9bad0; border-radius: 8px; padding: 6px 10px; font-size: .8rem; cursor: pointer; }
+.ghost:hover { border-color: #4a6285; color: #e6eefb; }
+.history-row { display: flex; align-items: stretch; gap: 6px; margin-bottom: 6px; }
+.history-row .history-item { flex: 1; }
+.history-del { flex: 0 0 auto; width: 34px; background: #16202f; border: 1px solid #2b3a50; color: #92a3b8; border-radius: 8px; font-size: 1rem; line-height: 1; cursor: pointer; }
+.history-del:hover { color: #ff8d8d; border-color: #6b2b2b; }
+.comment-actions { display: flex; gap: 6px; margin-top: 8px; }
+.comment-actions button { background: #16202f; border: 1px solid #2b3a50; color: #a9bad0; border-radius: 7px; padding: 4px 10px; font-size: .78rem; cursor: pointer; }
+.comment-actions button:hover { color: #e6eefb; border-color: #3b5679; }
+.comment-editor { margin-top: 8px; }
+.comment-edit { width: 100%; min-height: 72px; background: #0e1725; border: 1px solid #33455f; border-radius: 8px; color: #e6eefb; padding: 8px 10px; font: inherit; font-size: .9rem; resize: vertical; }
+.edited { color: #7f8fa6; font-size: .72rem; }
 .unit { color: #9dacbf; font-size: .9rem; }
 .card-sub { margin-top: 4px; font-size: .78rem; color: #9dacbf; }
 table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: .86rem; background: #182437; }
