@@ -11,7 +11,7 @@
   function updateElements() {
     var previous = element.value, list = [];
     try {
-      if (mode.value === 'mixture') {
+      if (mode.value.indexOf('mixture') === 0) {
         list = [];
       } else {
         list = Object.keys(calc.parseFormula(formula.value));
@@ -52,21 +52,26 @@
     if (clearButton) clearButton.hidden = !list.length;
     historyBox.innerHTML = list.length ? list.map(function (item, i) {
       var label = item.mode === 'reference' ? '기준 ' + item.element
-        : (item.mode === 'mixture' ? '조성식' : '총 질량');
+        : item.mode === 'total' ? '총 질량'
+          : item.mode === 'mixture-reference' ? '기준 화합물' : '총 질량';
       return '<div class="history-row"><button type="button" class="history-item" data-index="' + i + '">' + escapeHtml(item.formula) + ' · ' +
         label + ' · ' + item.amount + item.unit + '</button><button type="button" class="history-del" data-del="' + i + '" aria-label="이 기록 삭제">×</button></div>';
     }).join('') : '<p class="muted">아직 계산 기록이 없습니다.</p>';
   }
   function updateMode() {
     var current = mode.value;
-    var isMix = current === 'mixture';
+    var mixing = current.indexOf('mixture') === 0;
     referenceWrap.hidden = current !== 'reference';
     var formulaWrap = $('formula-wrap');
-    if (formulaWrap) formulaWrap.hidden = isMix;
+    if (formulaWrap) formulaWrap.hidden = mixing;
     var rows = $('mixture-rows');
-    if (rows) rows.hidden = !isMix;
+    if (rows) rows.hidden = !mixing;
     $('amount-label').textContent = current === 'reference' ? '기준 원소 질량'
-      : (current === 'total' ? '목표 총 질량' : '총 질량');
+      : (current === 'total' ? '목표 총 질량'
+        : (current === 'mixture-reference' ? '기준 화합물 질량' : '총 질량'));
+    var head = $('mix-ref-head');
+    if (head) head.textContent = current === 'mixture-reference' ? '기준' : '';
+    if (mixing) syncRows();
   }
   function render(data, anchor, raw) {
     var cards = data.rows.map(function (row) {
@@ -94,17 +99,22 @@
   }
   var mixRowList = $('mix-row-list');
   var addMixRowButton = $('add-mix-row');
-  var ROW_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  function relabelRows() {
-    Array.prototype.forEach.call(mixRowList.children, function (row, index) {
-      var letter = row.querySelector('.mix-letter');
-      if (letter) letter.textContent = index < ROW_LETTERS.length ? ROW_LETTERS[index] : String(index + 1);
+  function isMixMode() { return mode.value.indexOf('mixture') === 0; }
+  function syncRows() {
+    var showRef = mode.value === 'mixture-reference';
+    Array.prototype.forEach.call(mixRowList.children, function (row) {
+      var radio = row.querySelector('.mix-ref');
+      if (radio) radio.hidden = !showRef;
     });
+    if (showRef && !mixRowList.querySelector('.mix-ref:checked')) {
+      var first = mixRowList.querySelector('.mix-ref');
+      if (first) first.checked = true;
+    }
   }
   function addMixRow(formulaText, ratio) {
     var row = document.createElement('div');
     row.className = 'mix-row';
-    row.innerHTML = '<span class="mix-letter"></span>' +
+    row.innerHTML = '<input class="mix-ref" type="radio" name="mix-ref" aria-label="기준 화합물로 지정">' +
       '<input class="mix-formula" type="text" placeholder="예: SnTe" autocomplete="off" aria-label="화합물">' +
       '<input class="mix-ratio" type="number" min="0" step="any" inputmode="decimal" value="1" aria-label="몰 수(비율)">' +
       '<button type="button" class="mix-del" aria-label="이 화합물 삭제">×</button>';
@@ -117,19 +127,22 @@
         return;
       }
       row.remove();
-      relabelRows();
+      syncRows();
     });
     mixRowList.appendChild(row);
-    relabelRows();
+    syncRows();
     return row;
   }
-  function readMixRows() {
-    return Array.prototype.map.call(mixRowList.children, function (row) {
-      return {
-        formula: row.querySelector('.mix-formula').value.trim(),
-        coefficient: row.querySelector('.mix-ratio').value
-      };
-    }).filter(function (term) { return term.formula; });
+  function readMixSelection() {
+    var terms = [], referenceIndex = null;
+    Array.prototype.forEach.call(mixRowList.children, function (row) {
+      var formulaText = row.querySelector('.mix-formula').value.trim();
+      if (!formulaText) return;
+      var radio = row.querySelector('.mix-ref');
+      if (radio && radio.checked) referenceIndex = terms.length;
+      terms.push({ formula: formulaText, coefficient: row.querySelector('.mix-ratio').value });
+    });
+    return { terms: terms, referenceIndex: referenceIndex };
   }
   function fillMixRows(terms) {
     mixRowList.innerHTML = '';
@@ -202,7 +215,7 @@
     var value = Number(raw);
     if (!raw || !isFinite(value) || value <= 0) return;
     try {
-      if (field.dataset.term !== undefined && mixState && mode.value === 'mixture') {
+      if (field.dataset.term !== undefined && mixState && mode.value.indexOf('mixture') === 0) {
         var index = Number(field.dataset.term);
         mixState = calc.rebalanceComposition(mixState.terms, index, value);
         updateCompositionView(index, raw);
@@ -217,14 +230,20 @@
   form.addEventListener('submit', function (event) {
     event.preventDefault(); error.textContent = ''; result.hidden = true;
     try {
-      if (mode.value === 'mixture') {
-        var terms = readMixRows();
-        if (!terms.length) throw new Error('화합물을 하나 이상 입력해 주세요.');
-        var mixed = calc.calculateFromTerms(terms, { amount: amount.value, unit: unit.value });
+      if (mode.value.indexOf('mixture') === 0) {
+        var selection = readMixSelection();
+        if (!selection.terms.length) throw new Error('화합물을 하나 이상 입력해 주세요.');
+        var options = { amount: amount.value, unit: unit.value };
+        if (mode.value === 'mixture-reference') {
+          if (selection.referenceIndex === null) throw new Error('기준 화합물을 선택해 주세요.');
+          options.referenceIndex = selection.referenceIndex;
+        }
+        var mixed = calc.calculateFromTerms(selection.terms, options);
         renderComposition(mixed);
         saveHistory({
-          formula: terms.map(function (term) { return term.formula; }).join(' + '),
-          terms: terms, mode: 'mixture', amount: amount.value, unit: unit.value
+          formula: selection.terms.map(function (term) { return term.formula; }).join(' + '),
+          terms: selection.terms, referenceIndex: selection.referenceIndex,
+          mode: mode.value, amount: amount.value, unit: unit.value
         });
         renderHistory();
         return;
@@ -249,7 +268,13 @@
     var button = event.target.closest('.history-item'); if (!button) return;
     var item = readHistory()[Number(button.dataset.index)]; if (!item) return;
     formula.value = item.formula; mode.value = item.mode; amount.value = item.amount; unit.value = item.unit;
-    if (item.mode === 'mixture') fillMixRows(item.terms || null);
+    if (item.mode && item.mode.indexOf('mixture') === 0) {
+      fillMixRows(item.terms || null);
+      if (item.referenceIndex !== null && item.referenceIndex !== undefined) {
+        var radios = mixRowList.querySelectorAll('.mix-ref');
+        if (radios[item.referenceIndex]) radios[item.referenceIndex].checked = true;
+      }
+    }
     updateElements(); element.value = item.element || ''; updateMode(); form.requestSubmit();
   });
   updateMode(); updateElements(); renderHistory();

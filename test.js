@@ -91,4 +91,19 @@ test('terms input: rows with formulas and mole ratios', () => {
   assert.throws(() => calc.calculateFromTerms([{ formula: 'SnTe', coefficient: '0' }], { amount: 1 }));
   assert.throws(() => calc.calculateFromTerms([], { amount: 1 }));
 });
+test('compound reference mode', () => {
+  const terms = [{ formula: 'SnTe', coefficient: '1' }, { formula: 'InSb', coefficient: '0.9' }];
+  const mmSnTe = calc.molarMass({ Sn: 1, Te: 1 });
+  const mmInSb = calc.molarMass({ In: 1, Sb: 1 });
+  const first = calc.calculateFromTerms(terms, { amount: 1, unit: 'g', referenceIndex: 0 });
+  assert(Math.abs(first.terms[0].massG - 1) < 1e-12, 'reference compound keeps the entered mass');
+  assert(Math.abs(first.terms[1].massG - (0.9 * mmInSb) / mmSnTe) < 1e-12);
+  assert(Math.abs(first.totalMassG - (1 + (0.9 * mmInSb) / mmSnTe)) < 1e-12);
+  const second = calc.calculateFromTerms(terms, { amount: 1, unit: 'g', referenceIndex: 1 });
+  assert(Math.abs(second.terms[1].massG - 1) < 1e-12);
+  assert(Math.abs(second.terms[0].massG - mmSnTe / (0.9 * mmInSb)) < 1e-12);
+  const elementSum = second.rows.reduce((sum, r) => sum + r.massG, 0);
+  assert(Math.abs(elementSum - second.totalMassG) < 1e-9);
+  assert.throws(() => calc.calculateFromTerms(terms, { amount: 1, referenceIndex: 5 }));
+});
 process.exitCode = failures ? 1 : 0;

@@ -42,10 +42,12 @@ button:hover { background: #4993f2; } .error { min-height: 20px; color: #ff8e8e;
 .comment-editor { margin-top: 8px; }
 .comment-edit { width: 100%; min-height: 72px; background: #0e1725; border: 1px solid #33455f; border-radius: 8px; color: #e6eefb; padding: 8px 10px; font: inherit; font-size: .9rem; resize: vertical; }
 .edited { color: #7f8fa6; font-size: .72rem; }
-.mix-head, .mix-row { display: grid; grid-template-columns: 16px minmax(0, 1fr) 84px 34px; gap: 6px; align-items: center; }
+.mix-head, .mix-row { display: grid; grid-template-columns: 38px minmax(0, 1fr) 84px 34px; gap: 6px; align-items: center; }
 .mix-head { font-size: .72rem; color: #7f8fa6; margin-bottom: 4px; }
 .mix-row { margin-bottom: 6px; }
 .mix-letter { font-size: .8rem; color: #9dacbf; text-align: center; }
+.mix-row .mix-ref, .mix-head .mix-ref { width: 16px; min-height: 0; height: 16px; margin: 0 auto; accent-color: #2f80ed; padding: 0; }
+.mix-ref[hidden] { display: none; }
 .mix-row input { min-height: 40px; padding: 8px 10px; font-size: .95rem; }
 .mix-del { min-height: 40px; padding: 0; background: #16202f; border: 1px solid #2b3a50; color: #92a3b8; font-size: 1rem; border-radius: 8px; }
 .mix-del:hover { color: #ff8d8d; border-color: #6b2b2b; background: #16202f; }

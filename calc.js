@@ -178,9 +178,18 @@
       var composition = parseFormula(term.formula);
       return { formula: String(term.formula).trim(), coefficient: coefficient, composition: composition, molarMass: molarMass(composition) };
     });
-    var perUnitMass = prepared.reduce(function (sum, term) { return sum + term.coefficient * term.molarMass; }, 0);
-    var scaled = scaledTerms(prepared, totalMassG / perUnitMass);
-    return { terms: scaled, totalMassG: totalMassG, perUnitMass: perUnitMass, rows: elementRows(scaled, totalMassG) };
+    var scale;
+    if (options.referenceIndex === undefined || options.referenceIndex === null) {
+      var perUnitMass = prepared.reduce(function (sum, term) { return sum + term.coefficient * term.molarMass; }, 0);
+      scale = totalMassG / perUnitMass;
+    } else {
+      var reference = prepared[Number(options.referenceIndex)];
+      if (!reference) throw new Error('기준 화합물을 선택해 주세요.');
+      scale = totalMassG / (reference.coefficient * reference.molarMass);
+    }
+    var scaled = scaledTerms(prepared, scale);
+    var actualTotal = scaled.reduce(function (sum, term) { return sum + term.massG; }, 0);
+    return { terms: scaled, totalMassG: actualTotal, inputMassG: totalMassG, rows: elementRows(scaled, actualTotal) };
   }
 
   // 조성식 + 총 질량 → 화합물별/원소별 칭량량
