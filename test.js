@@ -39,24 +39,39 @@ test('atomic weights match CIAAW 2024 table', () => {
   }
   assert.deepStrictEqual(mismatches, [], mismatches.join('; '));
 });
-test('characters mode: SnTe -> InSb', () => {
-  const r = calc.calculateMixture('SnTe', 'InSb', { amount: 1, unit: 'g', ratio: 1 });
-  const mmA = calc.molarMass({ Sn: 1, Te: 1 });
-  const mmB = calc.molarMass({ In: 1, Sb: 1 });
-  assert(Math.abs(r.compounds[0].moles - 1 / mmA) < 1e-12);
-  assert(Math.abs(r.compounds[1].massG - (1 / mmA) * mmB) < 1e-12);
-  assert(Math.abs(r.totalMassG - (1 + (1 / mmA) * mmB)) < 1e-12);
-  const sum = r.rows.reduce((acc, row) => acc + row.massG, 0);
-  assert(Math.abs(sum - r.totalMassG) < 1e-9, 'element masses must add up');
-  assert.deepStrictEqual(r.rows.map(row => row.element).sort(), ['In', 'Sb', 'Sn', 'Te']);
+test('composition parse: SnTe(InSb)0.9', () => {
+  const terms = calc.parseComposition('SnTe(InSb)0.9');
+  assert.deepStrictEqual(terms, [{ formula: 'SnTe', coefficient: 1 }, { formula: 'InSb', coefficient: 0.9 }]);
+  const three = calc.parseComposition('SnTe(InSb)0.9(Bi2Te3)0.05');
+  assert.strictEqual(three.length, 3);
+  assert.strictEqual(three[2].formula, 'Bi2Te3');
+  assert(Math.abs(three[2].coefficient - 0.05) < 1e-12);
+  assert.strictEqual(calc.parseComposition('SnTe·InSb').length, 2);
+  assert.throws(() => calc.parseComposition('SnTe(InSb'), /괄호/);
+  assert.throws(() => calc.parseComposition('SnTe0.9'), /괄호/);
 });
-test('mixture ratio scaling', () => {
-  const one = calc.calculateMixture('SnTe', 'InSb', { amount: 1, unit: 'g', ratio: 1 });
-  const two = calc.calculateMixture('SnTe', 'InSb', { amount: 1, unit: 'g', ratio: 2 });
-  assert(Math.abs(two.compounds[1].massG - 2 * one.compounds[1].massG) < 1e-12);
-  const half = calc.calculateMixture('SnTe', 'InSb', { amount: 0.5, unit: 'g', ratio: 1 });
-  assert(Math.abs(half.compounds[1].massG - 0.5 * one.compounds[1].massG) < 1e-12);
-  assert.throws(() => calc.calculateMixture('SnTe', 'InSb', { amount: 1, ratio: 0 }));
-  assert.throws(() => calc.calculateMixture('SnTe', 'Xx', { amount: 1 }));
+test('composition amounts: total mass split by molar ratio', () => {
+  const data = calc.calculateComposition('SnTe(InSb)0.9', { amount: 1, unit: 'g' });
+  const mmSnTe = calc.molarMass({ Sn: 1, Te: 1 });
+  const mmInSb = calc.molarMass({ In: 1, Sb: 1 });
+  const perUnit = mmSnTe + 0.9 * mmInSb;
+  assert(Math.abs(data.terms[0].massG - mmSnTe / perUnit) < 1e-12);
+  assert(Math.abs(data.terms[1].massG - (0.9 * mmInSb) / perUnit) < 1e-12);
+  const termSum = data.terms.reduce((sum, t) => sum + t.massG, 0);
+  assert(Math.abs(termSum - 1) < 1e-12, 'compound masses must sum to the target mass');
+  const elementSum = data.rows.reduce((sum, r) => sum + r.massG, 0);
+  assert(Math.abs(elementSum - 1) < 1e-9, 'element masses must sum to the target mass');
+});
+test('composition rebalance keeps the molar ratio', () => {
+  const data = calc.calculateComposition('SnTe(InSb)0.9', { amount: 1, unit: 'g' });
+  const scaled = calc.rebalanceComposition(data.terms, 0, 2);
+  assert(Math.abs(scaled.terms[0].massG - 2) < 1e-12);
+  const ratioBefore = data.terms[1].massG / data.terms[0].massG;
+  const ratioAfter = scaled.terms[1].massG / scaled.terms[0].massG;
+  assert(Math.abs(ratioAfter - ratioBefore) < 1e-12);
+  const elementSum = scaled.rows.reduce((sum, r) => sum + r.massG, 0);
+  assert(Math.abs(elementSum - scaled.totalMassG) < 1e-9);
+  assert.throws(() => calc.rebalanceComposition(data.terms, 9, 1));
+  assert.throws(() => calc.rebalanceComposition(data.terms, 0, 0));
 });
 process.exitCode = failures ? 1 : 0;

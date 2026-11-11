@@ -98,40 +98,102 @@
     return { formula: formula.trim(), composition: composition, molarMass: totalMolarMass, formulaMoles: formulaMoles, totalMassG: totalG, rows: rows };
   }
 
-  // 화합물 모드: 화합물 A 질량 → 화합물 B 필요량(몰비 B/A) + 두 화합물의 원소별 총 칭량량
-  function calculateMixture(formulaA, formulaB, options) {
-    options = options || {};
-    var compA = parseFormula(formulaA), compB = parseFormula(formulaB);
-    var mmA = molarMass(compA), mmB = molarMass(compB);
-    var unitFactor = options.unit === 'mg' ? 0.001 : 1;
-    var massA = Number(options.amount) * unitFactor;
-    if (!Number.isFinite(massA) || massA <= 0) throw new Error('수량은 0보다 큰 숫자로 입력해 주세요.');
-    var ratioOption = options.ratio === undefined || options.ratio === '' ? 1 : Number(options.ratio);
-    if (!Number.isFinite(ratioOption) || ratioOption <= 0) throw new Error('몰비는 0보다 큰 숫자로 입력해 주세요.');
-    var nA = massA / mmA, nB = nA * ratioOption, massB = nB * mmB, totalMassG = massA + massB;
+  
+
+  // 화합물 조성식: SnTe(InSb)0.9 — 괄호로 묶은 화합물에 계수를 붙일 수 있고, 개수 제한은 없다.
+  function parseComposition(text) {
+    var source = String(text || '').replace(/\s+/g, '');
+    if (!source) throw new Error('화합물 조성을 입력해 주세요.');
+    var terms = [], index = 0;
+    while (index < source.length) {
+      var char = source[index];
+      if ('·×*+, '.indexOf(char) >= 0) { index++; continue; }
+      if (char === '(') {
+        var depth = 0, cursor = index + 1, inner = '';
+        for (; cursor < source.length; cursor++) {
+          var current = source[cursor];
+          if (current === '(') depth++;
+          else if (current === ')') { if (depth === 0) break; depth--; }
+          inner += current;
+        }
+        if (cursor >= source.length) throw new Error('괄호가 닫히지 않았습니다: ' + text);
+        var matched = /^(\d*\.?\d+)/.exec(source.slice(cursor + 1));
+        var coefficient = matched ? Number(matched[1]) : 1;
+        if (!(coefficient > 0)) throw new Error('계수는 0보다 커야 합니다: ' + inner);
+        parseFormula(inner);
+        terms.push({ formula: inner, coefficient: coefficient });
+        index = cursor + 1 + (matched ? matched[1].length : 0);
+        continue;
+      }
+      var end = index;
+      while (end < source.length && '·×*+, ()'.indexOf(source[end]) < 0) end++;
+      var token = source.slice(index, end);
+      if (!token) throw new Error('조성식을 읽을 수 없습니다: ' + text);
+      if (token.indexOf('.') >= 0) throw new Error('소수 계수는 괄호로 묶어 주세요. 예: SnTe(InSb)0.9');
+      parseFormula(token);
+      terms.push({ formula: token, coefficient: 1 });
+      index = end;
+    }
+    if (!terms.length) throw new Error('화합물 조성을 입력해 주세요.');
+    return terms;
+  }
+
+  function elementRows(terms, totalMassG) {
     var totals = {};
-    [{ comp: compA, moles: nA }, { comp: compB, moles: nB }].forEach(function (item) {
-      Object.keys(item.comp).forEach(function (element) {
-        totals[element] = (totals[element] || 0) + item.moles * item.comp[element] * weights[element];
+    terms.forEach(function (term) {
+      Object.keys(term.composition).forEach(function (element) {
+        totals[element] = (totals[element] || 0) + term.moles * term.composition[element] * weights[element];
       });
     });
-    var rows = Object.keys(totals).map(function (element) {
+    return Object.keys(totals).map(function (element) {
       return {
         element: element, atomicWeight: weights[element], massG: totals[element],
         moleAmount: totals[element] / weights[element], massPercent: (totals[element] / totalMassG) * 100
       };
     });
-    return {
-      ratio: ratioOption, totalMassG: totalMassG, rows: rows,
-      compounds: [
-        { label: 'A', formula: formulaA.trim(), molarMass: mmA, moles: nA, massG: massA },
-        { label: 'B', formula: formulaB.trim(), molarMass: mmB, moles: nB, massG: massB }
-      ]
-    };
+  }
+
+  function scaledTerms(prepared, scale) {
+    return prepared.map(function (term) {
+      var copy = {
+        formula: term.formula, coefficient: term.coefficient,
+        molarMass: term.molarMass, composition: term.composition
+      };
+      copy.moles = term.coefficient * scale;
+      copy.massG = copy.moles * copy.molarMass;
+      return copy;
+    });
+  }
+
+  // 조성식 + 총 질량 → 화합물별/원소별 칭량량
+  function calculateComposition(text, options) {
+    options = options || {};
+    var unitFactor = options.unit === 'mg' ? 0.001 : 1;
+    var totalMassG = Number(options.amount) * unitFactor;
+    if (!Number.isFinite(totalMassG) || totalMassG <= 0) throw new Error('수량은 0보다 큰 숫자로 입력해 주세요.');
+    var prepared = parseComposition(text).map(function (term) {
+      var composition = parseFormula(term.formula);
+      return { formula: term.formula, coefficient: term.coefficient, composition: composition, molarMass: molarMass(composition) };
+    });
+    var perUnitMass = prepared.reduce(function (sum, term) { return sum + term.coefficient * term.molarMass; }, 0);
+    var terms = scaledTerms(prepared, totalMassG / perUnitMass);
+    return { terms: terms, totalMassG: totalMassG, perUnitMass: perUnitMass, rows: elementRows(terms, totalMassG) };
+  }
+
+  // 화합물 하나의 질량을 직접 지정 → 나머지는 같은 몰비로 따라온다
+  function rebalanceComposition(terms, index, massG) {
+    var target = terms[index];
+    if (!target) throw new Error('없는 화합물입니다.');
+    if (!Number.isFinite(massG) || massG <= 0) throw new Error('질량은 0보다 큰 숫자로 입력해 주세요.');
+    var scale = massG / (target.coefficient * target.molarMass);
+    var scaled = scaledTerms(terms, scale);
+    var totalMassG = scaled.reduce(function (sum, term) { return sum + term.massG; }, 0);
+    return { terms: scaled, totalMassG: totalMassG, perUnitMass: 0, rows: elementRows(scaled, totalMassG) };
   }
 
   return {
     atomicWeights: weights, parseFormula: parseFormula, molarMass: molarMass,
-    calculate: calculate, calculateMixture: calculateMixture
+    calculate: calculate, parseComposition: parseComposition,
+    calculateComposition: calculateComposition, rebalanceComposition: rebalanceComposition
   };
 }));

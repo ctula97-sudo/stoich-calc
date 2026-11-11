@@ -37,6 +37,7 @@ button:hover { background: #4993f2; } .error { min-height: 20px; color: #ff8e8e;
 .card-mass.static { border-color: transparent; background: transparent; }
 .sub-head { font-size: .95rem; color: #a9bad0; margin: 16px 0 8px; }
 .row-between { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.row-between h2 { flex: 0 0 auto; white-space: nowrap; }
 .ghost { background: transparent; border: 1px solid #33455f; color: #a9bad0; border-radius: 8px; padding: 6px 10px; font-size: .8rem; cursor: pointer; }
 .ghost:hover { border-color: #4a6285; color: #e6eefb; }
 .history-row { display: flex; align-items: stretch; gap: 6px; margin-bottom: 6px; }
@@ -65,12 +66,8 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
   <main>
     <header><h1>화학량론 계산기</h1><p>재료 실험을 위한 원소별 칭량량 계산</p></header>
     <form id="calculator" novalidate>
-      <label>계산 모드<select id="mode"><option value="reference">원소별 (기준 원소)</option><option value="total">원소별 (총 질량)</option><option value="mixture">화합물 혼합 (A → B)</option></select></label>
+      <label>계산 모드<select id="mode"><option value="reference">원소별 (기준 원소)</option><option value="total">원소별 (총 질량)</option><option value="mixture">화합물 혼합 (조성식)</option></select></label>
       <label><span id="formula-label">화학식</span><input id="formula" type="text" placeholder="예: ZnGa2Se4" autocomplete="off"></label>
-      <div id="mixture-wrap" hidden>
-        <label><span id="formula-b-label">화합물 B 화학식</span><input id="formula-b" type="text" placeholder="예: InSb" autocomplete="off"></label>
-        <label><span id="ratio-label">몰비 B/A</span><input id="ratio" type="number" min="0" step="any" value="1" inputmode="decimal"></label>
-      </div>
       <div id="reference-wrap"><label>기준 원소<select id="element"></select></label></div>
       <label><span id="amount-label">기준 원소 질량</span><input id="amount" type="number" min="0" step="any" inputmode="decimal" placeholder="예: 1.0000"></label>
       <label>단위<select id="unit"><option value="g">g</option><option value="mg">mg</option></select></label>
@@ -190,41 +187,103 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
     return { formula: formula.trim(), composition: composition, molarMass: totalMolarMass, formulaMoles: formulaMoles, totalMassG: totalG, rows: rows };
   }
 
-  // 화합물 모드: 화합물 A 질량 → 화합물 B 필요량(몰비 B/A) + 두 화합물의 원소별 총 칭량량
-  function calculateMixture(formulaA, formulaB, options) {
-    options = options || {};
-    var compA = parseFormula(formulaA), compB = parseFormula(formulaB);
-    var mmA = molarMass(compA), mmB = molarMass(compB);
-    var unitFactor = options.unit === 'mg' ? 0.001 : 1;
-    var massA = Number(options.amount) * unitFactor;
-    if (!Number.isFinite(massA) || massA <= 0) throw new Error('수량은 0보다 큰 숫자로 입력해 주세요.');
-    var ratioOption = options.ratio === undefined || options.ratio === '' ? 1 : Number(options.ratio);
-    if (!Number.isFinite(ratioOption) || ratioOption <= 0) throw new Error('몰비는 0보다 큰 숫자로 입력해 주세요.');
-    var nA = massA / mmA, nB = nA * ratioOption, massB = nB * mmB, totalMassG = massA + massB;
+  
+
+  // 화합물 조성식: SnTe(InSb)0.9 — 괄호로 묶은 화합물에 계수를 붙일 수 있고, 개수 제한은 없다.
+  function parseComposition(text) {
+    var source = String(text || '').replace(/\s+/g, '');
+    if (!source) throw new Error('화합물 조성을 입력해 주세요.');
+    var terms = [], index = 0;
+    while (index < source.length) {
+      var char = source[index];
+      if ('·×*+, '.indexOf(char) >= 0) { index++; continue; }
+      if (char === '(') {
+        var depth = 0, cursor = index + 1, inner = '';
+        for (; cursor < source.length; cursor++) {
+          var current = source[cursor];
+          if (current === '(') depth++;
+          else if (current === ')') { if (depth === 0) break; depth--; }
+          inner += current;
+        }
+        if (cursor >= source.length) throw new Error('괄호가 닫히지 않았습니다: ' + text);
+        var matched = /^(\d*\.?\d+)/.exec(source.slice(cursor + 1));
+        var coefficient = matched ? Number(matched[1]) : 1;
+        if (!(coefficient > 0)) throw new Error('계수는 0보다 커야 합니다: ' + inner);
+        parseFormula(inner);
+        terms.push({ formula: inner, coefficient: coefficient });
+        index = cursor + 1 + (matched ? matched[1].length : 0);
+        continue;
+      }
+      var end = index;
+      while (end < source.length && '·×*+, ()'.indexOf(source[end]) < 0) end++;
+      var token = source.slice(index, end);
+      if (!token) throw new Error('조성식을 읽을 수 없습니다: ' + text);
+      if (token.indexOf('.') >= 0) throw new Error('소수 계수는 괄호로 묶어 주세요. 예: SnTe(InSb)0.9');
+      parseFormula(token);
+      terms.push({ formula: token, coefficient: 1 });
+      index = end;
+    }
+    if (!terms.length) throw new Error('화합물 조성을 입력해 주세요.');
+    return terms;
+  }
+
+  function elementRows(terms, totalMassG) {
     var totals = {};
-    [{ comp: compA, moles: nA }, { comp: compB, moles: nB }].forEach(function (item) {
-      Object.keys(item.comp).forEach(function (element) {
-        totals[element] = (totals[element] || 0) + item.moles * item.comp[element] * weights[element];
+    terms.forEach(function (term) {
+      Object.keys(term.composition).forEach(function (element) {
+        totals[element] = (totals[element] || 0) + term.moles * term.composition[element] * weights[element];
       });
     });
-    var rows = Object.keys(totals).map(function (element) {
+    return Object.keys(totals).map(function (element) {
       return {
         element: element, atomicWeight: weights[element], massG: totals[element],
         moleAmount: totals[element] / weights[element], massPercent: (totals[element] / totalMassG) * 100
       };
     });
-    return {
-      ratio: ratioOption, totalMassG: totalMassG, rows: rows,
-      compounds: [
-        { label: 'A', formula: formulaA.trim(), molarMass: mmA, moles: nA, massG: massA },
-        { label: 'B', formula: formulaB.trim(), molarMass: mmB, moles: nB, massG: massB }
-      ]
-    };
+  }
+
+  function scaledTerms(prepared, scale) {
+    return prepared.map(function (term) {
+      var copy = {
+        formula: term.formula, coefficient: term.coefficient,
+        molarMass: term.molarMass, composition: term.composition
+      };
+      copy.moles = term.coefficient * scale;
+      copy.massG = copy.moles * copy.molarMass;
+      return copy;
+    });
+  }
+
+  // 조성식 + 총 질량 → 화합물별/원소별 칭량량
+  function calculateComposition(text, options) {
+    options = options || {};
+    var unitFactor = options.unit === 'mg' ? 0.001 : 1;
+    var totalMassG = Number(options.amount) * unitFactor;
+    if (!Number.isFinite(totalMassG) || totalMassG <= 0) throw new Error('수량은 0보다 큰 숫자로 입력해 주세요.');
+    var prepared = parseComposition(text).map(function (term) {
+      var composition = parseFormula(term.formula);
+      return { formula: term.formula, coefficient: term.coefficient, composition: composition, molarMass: molarMass(composition) };
+    });
+    var perUnitMass = prepared.reduce(function (sum, term) { return sum + term.coefficient * term.molarMass; }, 0);
+    var terms = scaledTerms(prepared, totalMassG / perUnitMass);
+    return { terms: terms, totalMassG: totalMassG, perUnitMass: perUnitMass, rows: elementRows(terms, totalMassG) };
+  }
+
+  // 화합물 하나의 질량을 직접 지정 → 나머지는 같은 몰비로 따라온다
+  function rebalanceComposition(terms, index, massG) {
+    var target = terms[index];
+    if (!target) throw new Error('없는 화합물입니다.');
+    if (!Number.isFinite(massG) || massG <= 0) throw new Error('질량은 0보다 큰 숫자로 입력해 주세요.');
+    var scale = massG / (target.coefficient * target.molarMass);
+    var scaled = scaledTerms(terms, scale);
+    var totalMassG = scaled.reduce(function (sum, term) { return sum + term.massG; }, 0);
+    return { terms: scaled, totalMassG: totalMassG, perUnitMass: 0, rows: elementRows(scaled, totalMassG) };
   }
 
   return {
     atomicWeights: weights, parseFormula: parseFormula, molarMass: molarMass,
-    calculate: calculate, calculateMixture: calculateMixture
+    calculate: calculate, parseComposition: parseComposition,
+    calculateComposition: calculateComposition, rebalanceComposition: rebalanceComposition
   };
 }));
 
@@ -236,14 +295,23 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
   var $ = function (id) { return document.getElementById(id); };
   var form = $('calculator'), mode = $('mode'), referenceWrap = $('reference-wrap');
   var formula = $('formula'), element = $('element'), amount = $('amount'), unit = $('unit');
-  var mixtureWrap = $('mixture-wrap'), formulaB = $('formula-b'), ratioInput = $('ratio');
   var error = $('error'), result = $('result'), historyBox = $('history');
   var storageKey = 'stoich-history-v1';
   // 기준 원소 목록은 입력한 화학식에 실제로 들어있는 원소만 보여준다.
   function elementSymbols() { return Object.keys(calc.atomicWeights); }
   function updateElements() {
     var previous = element.value, list = [];
-    try { list = Object.keys(calc.parseFormula(formula.value)); } catch (e) { list = []; }
+    try {
+      if (mode.value === 'mixture') {
+        var merged = {};
+        calc.parseComposition(formula.value).forEach(function (term) {
+          Object.keys(calc.parseFormula(term.formula)).forEach(function (symbol) { merged[symbol] = 1; });
+        });
+        list = Object.keys(merged);
+      } else {
+        list = Object.keys(calc.parseFormula(formula.value));
+      }
+    } catch (e) { list = []; }
     element.innerHTML = '';
     if (!list.length) {
       var placeholder = document.createElement('option');
@@ -278,18 +346,19 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
     var clearButton = $('clear-history');
     if (clearButton) clearButton.hidden = !list.length;
     historyBox.innerHTML = list.length ? list.map(function (item, i) {
-      return '<div class="history-row"><button type="button" class="history-item" data-index="' + i + '">' + item.formula + ' · ' +
-        (item.mode === 'reference' ? '기준 ' + item.element : (item.mode === 'mixture' ? '× ' + (item.formulaB || '') + ' (몰비 ' + (item.ratio || 1) + ')' : '총 질량')) +
-        ' · ' + item.amount + item.unit + '</button><button type="button" class="history-del" data-del="' + i + '" aria-label="이 기록 삭제">×</button></div>';
+      var label = item.mode === 'reference' ? '기준 ' + item.element
+        : (item.mode === 'mixture' ? '조성식' : '총 질량');
+      return '<div class="history-row"><button type="button" class="history-item" data-index="' + i + '">' + escapeHtml(item.formula) + ' · ' +
+        label + ' · ' + item.amount + item.unit + '</button><button type="button" class="history-del" data-del="' + i + '" aria-label="이 기록 삭제">×</button></div>';
     }).join('') : '<p class="muted">아직 계산 기록이 없습니다.</p>';
   }
   function updateMode() {
     var current = mode.value;
     referenceWrap.hidden = current !== 'reference';
-    if (mixtureWrap) mixtureWrap.hidden = current !== 'mixture';
+    formula.placeholder = current === 'mixture' ? '예: SnTe(InSb)0.9' : '예: ZnGa2Se4';
     $('amount-label').textContent = current === 'reference' ? '기준 원소 질량'
-      : (current === 'total' ? '목표 총 질량' : '화합물 A 질량');
-    $('formula-label').textContent = current === 'mixture' ? '화합물 A 화학식' : '화학식';
+      : (current === 'total' ? '목표 총 질량' : '총 질량');
+    $('formula-label').textContent = current === 'mixture' ? '화합물 조성식' : '화학식';
   }
   function render(data, anchor, raw) {
     var cards = data.rows.map(function (row) {
@@ -315,28 +384,56 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
       '<p class="note">질량을 직접 고치면 나머지 원소가 그 값에 맞춰 다시 계산됩니다. 표시는 0.0001 g 해상도 기준.</p>';
     result.hidden = false;
   }
-  // 화합물 모드 결과: 화합물별 A/B 요약 + 원소별 총 칭량량
-  function renderMixture(data) {
-    var compounds = data.compounds.map(function (compound) {
-      return '<div class="card' + (compound.label === 'A' ? ' ref' : '') + '">' +
-        '<div class="card-top"><b>' + compound.label + ' · ' + compound.formula + '</b>' +
-        '<span class="card-mass static">' + formatMass(compound.massG) + '</span></div>' +
-        '<div class="card-sub">몰 질량 ' + compound.molarMass.toFixed(3) + ' g/mol · ' +
-        format(compound.moles) + ' mol</div></div>';
-    }).join('');
-    var rows = data.rows.map(function (row) {
+  // 화합물 모드 결과: 화합물마다 질량 입력칸 + 원소별 총 칭량량
+  var mixState = null;
+  function elementCards(rows) {
+    return rows.map(function (row) {
       return '<div class="card"><div class="card-top"><b>' + row.element + '</b>' +
-        '<span class="card-mass static">' + formatMass(row.massG) + '</span></div>' +
-        '<div class="card-sub">' + format(row.moleAmount) + ' mol · ' + format(row.massPercent) + '% · 원자량 ' +
-        row.atomicWeight + '</div></div>';
+        '<span class="mass-group"><span class="card-mass static">' + formatMass(row.massG) + '</span></span></div>' +
+        '<div class="card-sub">' + format(row.moleAmount) + ' mol · ' + format(row.massPercent) + '% · 원자량 ' + row.atomicWeight + '</div></div>';
     }).join('');
+  }
+  function verifyLine(data) {
     var shownSum = data.rows.reduce(function (sum, r) { return sum + roundedMass(r.massG); }, 0);
-    result.innerHTML = '<div class="summary"><strong>몰비 B/A</strong><span>' + format(data.ratio) + '</span><strong>합계 질량</strong><span>' + formatMass(data.totalMassG) + '</span></div>' +
-      '<h3 class="sub-head">화합물</h3><div class="cards">' + compounds + '</div>' +
-      '<h3 class="sub-head">원소별 총 칭량량</h3><div class="cards">' + rows + '</div>' +
-      '<p class="verify">검산: ' + data.rows.map(function (r) { return formatMass(r.massG); }).join(' + ') + ' = <b>' + formatMass(shownSum) + '</b></p>' +
-      '<p class="note">화합물 A 질량을 기준으로 몰비 B/A 만큼 B를 계산했습니다. 표시는 0.0001 g 해상도 기준.</p>';
+    var termSum = data.terms.reduce(function (sum, t) { return sum + roundedMass(t.massG); }, 0);
+    return '검산: 화합물 합 ' + formatMass(termSum) + ' · 원소 합 <b>' + formatMass(shownSum) + '</b>' +
+      (Math.abs(shownSum - roundedMass(data.totalMassG)) >= 0.00005 ? ' (실제 ' + formatMass(data.totalMassG) + ', 반올림 차이)' : '');
+  }
+  function compositionTotal(data) {
+    return data.terms.reduce(function (sum, term) { return sum + roundedMass(term.massG); }, 0);
+  }
+  function renderComposition(data) {
+    mixState = data;
+    var terms = data.terms.map(function (term, index) {
+      return '<div class="card"><div class="card-top"><b>' + escapeHtml(term.formula) +
+        (term.coefficient !== 1 ? ' <em>×' + String(Number(term.coefficient)) + '</em>' : '') + '</b>' +
+        '<span class="mass-group"><input class="card-mass" type="text" inputmode="decimal" data-term="' + index +
+        '" value="' + term.massG.toFixed(BALANCE_DIGITS) + '" aria-label="' + escapeHtml(term.formula) + ' 질량(g)"><span class="unit">g</span></span></div>' +
+        '<div class="card-sub" data-termsub="' + index + '">몰 질량 ' + term.molarMass.toFixed(3) + ' g/mol · ' + format(term.moles) + ' mol</div></div>';
+    }).join('');
+    result.innerHTML = '<div class="summary"><strong>총 질량</strong><span id="mix-total">' + formatMass(compositionTotal(data)) + '</span>' +
+      '<strong>화합물 수</strong><span>' + data.terms.length + '</span></div>' +
+      '<h3 class="sub-head">화합물별 질량 (직접 고치면 나머지가 같은 몰비로 따라옵니다)</h3><div class="cards" id="mix-terms">' + terms + '</div>' +
+      '<h3 class="sub-head">원소별 총 칭량량</h3><div class="cards" id="mix-elements">' + elementCards(data.rows) + '</div>' +
+      '<p class="verify" id="mix-verify">' + verifyLine(data) + '</p>' +
+      '<p class="note">괄호 계수는 화합물 몰비입니다. 표시는 0.0001 g 해상도 기준.</p>';
     result.hidden = false;
+  }
+  function updateCompositionView(editedIndex, editedRaw) {
+    var data = mixState;
+    var total = compositionTotal(data);
+    var totalBox = $('mix-total');
+    if (totalBox) totalBox.textContent = formatMass(total);
+    data.terms.forEach(function (term, index) {
+      var input = result.querySelector('.card-mass[data-term="' + index + '"]');
+      if (input && index !== editedIndex) input.value = term.massG.toFixed(BALANCE_DIGITS);
+      var sub = result.querySelector('[data-termsub="' + index + '"]');
+      if (sub) sub.textContent = '몰 질량 ' + term.molarMass.toFixed(3) + ' g/mol · ' + format(term.moles) + ' mol';
+    });
+    var elements = $('mix-elements');
+    if (elements) elements.innerHTML = elementCards(data.rows);
+    var verify = $('mix-verify');
+    if (verify) verify.innerHTML = verifyLine(data);
   }
   // 결과 카드에서 질량을 직접 수정 → 수정한 원소를 기준으로 전체 재계산
   result.addEventListener('input', function (event) {
@@ -346,6 +443,12 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
     var value = Number(raw);
     if (!raw || !isFinite(value) || value <= 0) return;
     try {
+      if (field.dataset.term !== undefined && mixState && mode.value === 'mixture') {
+        var index = Number(field.dataset.term);
+        mixState = calc.rebalanceComposition(mixState.terms, index, value);
+        updateCompositionView(index, raw);
+        return;
+      }
       var data = calc.calculate(formula.value, { mode: 'reference', element: field.dataset.element, amount: value, unit: 'g' });
       render(data, field.dataset.element, raw);
       var again = result.querySelector('.card-mass[data-element="' + field.dataset.element + '"]');
@@ -356,9 +459,9 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
     event.preventDefault(); error.textContent = ''; result.hidden = true;
     try {
       if (mode.value === 'mixture') {
-        var mixed = calc.calculateMixture(formula.value, formulaB.value, { amount: amount.value, unit: unit.value, ratio: ratioInput.value });
-        renderMixture(mixed);
-        saveHistory({ formula: formula.value.trim(), formulaB: formulaB.value.trim(), mode: 'mixture', amount: amount.value, unit: unit.value, ratio: ratioInput.value });
+        var mixed = calc.calculateComposition(formula.value, { amount: amount.value, unit: unit.value });
+        renderComposition(mixed);
+        saveHistory({ formula: formula.value.trim(), mode: 'mixture', amount: amount.value, unit: unit.value });
         renderHistory();
         return;
       }
@@ -382,8 +485,6 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
     var button = event.target.closest('.history-item'); if (!button) return;
     var item = readHistory()[Number(button.dataset.index)]; if (!item) return;
     formula.value = item.formula; mode.value = item.mode; amount.value = item.amount; unit.value = item.unit;
-    if (item.formulaB !== undefined && formulaB) formulaB.value = item.formulaB;
-    if (item.ratio !== undefined && ratioInput) ratioInput.value = item.ratio;
     updateElements(); element.value = item.element || ''; updateMode(); form.requestSubmit();
   });
   updateMode(); updateElements(); renderHistory();

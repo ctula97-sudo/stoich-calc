@@ -38,19 +38,30 @@ HARNESS = """
         out.push('EDIT Sn=2 -> ' + vals + ' | ' + (document.querySelector('#result .verify') || {}).innerText);
       } else { out.push('EDIT FAILED: no Sn field'); }
 
-      // 화합물 모드: SnTe 1 g -> InSb (몰비 1)
+      // 화합물 모드: SnTe(InSb)0.9, 총 1 g
       document.getElementById('mode').value = 'mixture';
       document.getElementById('mode').dispatchEvent(new Event('change'));
-      out.push('MIX wrap hidden=' + document.getElementById('mixture-wrap').hidden +
-               ' ref hidden=' + document.getElementById('reference-wrap').hidden);
-      document.getElementById('formula').value = 'SnTe';
-      document.getElementById('formula-b').value = 'InSb';
-      document.getElementById('ratio').value = '1';
+      out.push('MIX ref hidden=' + document.getElementById('reference-wrap').hidden +
+               ' label=' + document.getElementById('formula-label').textContent);
+      document.getElementById('formula').value = 'SnTe(InSb)0.9';
       document.getElementById('amount').value = '1';
       document.getElementById('unit').value = 'g';
       document.getElementById('calculator').dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));
       out.push('MIX err=[' + document.getElementById('error').textContent + ']');
       out.push('MIX ' + (document.getElementById('result').innerText || '').replace(/\\\\s+/g, ' '));
+      var termInput = document.querySelector('.card-mass[data-term="0"]');
+      if (termInput) {
+        termInput.value = '2';
+        termInput.dispatchEvent(new Event('input', {bubbles: true}));
+        var termVals = Array.prototype.map.call(document.querySelectorAll('.card-mass[data-term]'), function (f) { return f.dataset.term + '=' + f.value; }).join(',');
+        out.push('MIX-EDIT ' + termVals + ' | ' + (document.getElementById('mix-verify') || {}).innerText);
+      } else { out.push('MIX-EDIT FAILED: no term field'); }
+
+      // 화합물 3종
+      document.getElementById('formula').value = 'SnTe(InSb)0.9(Bi2Te3)0.05';
+      document.getElementById('calculator').dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));
+      out.push('MIX3 err=[' + document.getElementById('error').textContent + '] terms=' + document.querySelectorAll('.card-mass[data-term]').length);
+      out.push('MIX3 ' + (document.getElementById('result').innerText || '').replace(/\\\\s+/g, ' '));
 
       // 최근 계산: 개별 삭제 · 전체 지우기 버튼 유무
       var before = document.querySelectorAll('.history-row').length;

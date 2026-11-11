@@ -4,14 +4,23 @@
   var $ = function (id) { return document.getElementById(id); };
   var form = $('calculator'), mode = $('mode'), referenceWrap = $('reference-wrap');
   var formula = $('formula'), element = $('element'), amount = $('amount'), unit = $('unit');
-  var mixtureWrap = $('mixture-wrap'), formulaB = $('formula-b'), ratioInput = $('ratio');
   var error = $('error'), result = $('result'), historyBox = $('history');
   var storageKey = 'stoich-history-v1';
   // 기준 원소 목록은 입력한 화학식에 실제로 들어있는 원소만 보여준다.
   function elementSymbols() { return Object.keys(calc.atomicWeights); }
   function updateElements() {
     var previous = element.value, list = [];
-    try { list = Object.keys(calc.parseFormula(formula.value)); } catch (e) { list = []; }
+    try {
+      if (mode.value === 'mixture') {
+        var merged = {};
+        calc.parseComposition(formula.value).forEach(function (term) {
+          Object.keys(calc.parseFormula(term.formula)).forEach(function (symbol) { merged[symbol] = 1; });
+        });
+        list = Object.keys(merged);
+      } else {
+        list = Object.keys(calc.parseFormula(formula.value));
+      }
+    } catch (e) { list = []; }
     element.innerHTML = '';
     if (!list.length) {
       var placeholder = document.createElement('option');
@@ -46,18 +55,19 @@
     var clearButton = $('clear-history');
     if (clearButton) clearButton.hidden = !list.length;
     historyBox.innerHTML = list.length ? list.map(function (item, i) {
-      return '<div class="history-row"><button type="button" class="history-item" data-index="' + i + '">' + item.formula + ' · ' +
-        (item.mode === 'reference' ? '기준 ' + item.element : (item.mode === 'mixture' ? '× ' + (item.formulaB || '') + ' (몰비 ' + (item.ratio || 1) + ')' : '총 질량')) +
-        ' · ' + item.amount + item.unit + '</button><button type="button" class="history-del" data-del="' + i + '" aria-label="이 기록 삭제">×</button></div>';
+      var label = item.mode === 'reference' ? '기준 ' + item.element
+        : (item.mode === 'mixture' ? '조성식' : '총 질량');
+      return '<div class="history-row"><button type="button" class="history-item" data-index="' + i + '">' + escapeHtml(item.formula) + ' · ' +
+        label + ' · ' + item.amount + item.unit + '</button><button type="button" class="history-del" data-del="' + i + '" aria-label="이 기록 삭제">×</button></div>';
     }).join('') : '<p class="muted">아직 계산 기록이 없습니다.</p>';
   }
   function updateMode() {
     var current = mode.value;
     referenceWrap.hidden = current !== 'reference';
-    if (mixtureWrap) mixtureWrap.hidden = current !== 'mixture';
+    formula.placeholder = current === 'mixture' ? '예: SnTe(InSb)0.9' : '예: ZnGa2Se4';
     $('amount-label').textContent = current === 'reference' ? '기준 원소 질량'
-      : (current === 'total' ? '목표 총 질량' : '화합물 A 질량');
-    $('formula-label').textContent = current === 'mixture' ? '화합물 A 화학식' : '화학식';
+      : (current === 'total' ? '목표 총 질량' : '총 질량');
+    $('formula-label').textContent = current === 'mixture' ? '화합물 조성식' : '화학식';
   }
   function render(data, anchor, raw) {
     var cards = data.rows.map(function (row) {
@@ -83,28 +93,56 @@
       '<p class="note">질량을 직접 고치면 나머지 원소가 그 값에 맞춰 다시 계산됩니다. 표시는 0.0001 g 해상도 기준.</p>';
     result.hidden = false;
   }
-  // 화합물 모드 결과: 화합물별 A/B 요약 + 원소별 총 칭량량
-  function renderMixture(data) {
-    var compounds = data.compounds.map(function (compound) {
-      return '<div class="card' + (compound.label === 'A' ? ' ref' : '') + '">' +
-        '<div class="card-top"><b>' + compound.label + ' · ' + compound.formula + '</b>' +
-        '<span class="card-mass static">' + formatMass(compound.massG) + '</span></div>' +
-        '<div class="card-sub">몰 질량 ' + compound.molarMass.toFixed(3) + ' g/mol · ' +
-        format(compound.moles) + ' mol</div></div>';
-    }).join('');
-    var rows = data.rows.map(function (row) {
+  // 화합물 모드 결과: 화합물마다 질량 입력칸 + 원소별 총 칭량량
+  var mixState = null;
+  function elementCards(rows) {
+    return rows.map(function (row) {
       return '<div class="card"><div class="card-top"><b>' + row.element + '</b>' +
-        '<span class="card-mass static">' + formatMass(row.massG) + '</span></div>' +
-        '<div class="card-sub">' + format(row.moleAmount) + ' mol · ' + format(row.massPercent) + '% · 원자량 ' +
-        row.atomicWeight + '</div></div>';
+        '<span class="mass-group"><span class="card-mass static">' + formatMass(row.massG) + '</span></span></div>' +
+        '<div class="card-sub">' + format(row.moleAmount) + ' mol · ' + format(row.massPercent) + '% · 원자량 ' + row.atomicWeight + '</div></div>';
     }).join('');
+  }
+  function verifyLine(data) {
     var shownSum = data.rows.reduce(function (sum, r) { return sum + roundedMass(r.massG); }, 0);
-    result.innerHTML = '<div class="summary"><strong>몰비 B/A</strong><span>' + format(data.ratio) + '</span><strong>합계 질량</strong><span>' + formatMass(data.totalMassG) + '</span></div>' +
-      '<h3 class="sub-head">화합물</h3><div class="cards">' + compounds + '</div>' +
-      '<h3 class="sub-head">원소별 총 칭량량</h3><div class="cards">' + rows + '</div>' +
-      '<p class="verify">검산: ' + data.rows.map(function (r) { return formatMass(r.massG); }).join(' + ') + ' = <b>' + formatMass(shownSum) + '</b></p>' +
-      '<p class="note">화합물 A 질량을 기준으로 몰비 B/A 만큼 B를 계산했습니다. 표시는 0.0001 g 해상도 기준.</p>';
+    var termSum = data.terms.reduce(function (sum, t) { return sum + roundedMass(t.massG); }, 0);
+    return '검산: 화합물 합 ' + formatMass(termSum) + ' · 원소 합 <b>' + formatMass(shownSum) + '</b>' +
+      (Math.abs(shownSum - roundedMass(data.totalMassG)) >= 0.00005 ? ' (실제 ' + formatMass(data.totalMassG) + ', 반올림 차이)' : '');
+  }
+  function compositionTotal(data) {
+    return data.terms.reduce(function (sum, term) { return sum + roundedMass(term.massG); }, 0);
+  }
+  function renderComposition(data) {
+    mixState = data;
+    var terms = data.terms.map(function (term, index) {
+      return '<div class="card"><div class="card-top"><b>' + escapeHtml(term.formula) +
+        (term.coefficient !== 1 ? ' <em>×' + String(Number(term.coefficient)) + '</em>' : '') + '</b>' +
+        '<span class="mass-group"><input class="card-mass" type="text" inputmode="decimal" data-term="' + index +
+        '" value="' + term.massG.toFixed(BALANCE_DIGITS) + '" aria-label="' + escapeHtml(term.formula) + ' 질량(g)"><span class="unit">g</span></span></div>' +
+        '<div class="card-sub" data-termsub="' + index + '">몰 질량 ' + term.molarMass.toFixed(3) + ' g/mol · ' + format(term.moles) + ' mol</div></div>';
+    }).join('');
+    result.innerHTML = '<div class="summary"><strong>총 질량</strong><span id="mix-total">' + formatMass(compositionTotal(data)) + '</span>' +
+      '<strong>화합물 수</strong><span>' + data.terms.length + '</span></div>' +
+      '<h3 class="sub-head">화합물별 질량 (직접 고치면 나머지가 같은 몰비로 따라옵니다)</h3><div class="cards" id="mix-terms">' + terms + '</div>' +
+      '<h3 class="sub-head">원소별 총 칭량량</h3><div class="cards" id="mix-elements">' + elementCards(data.rows) + '</div>' +
+      '<p class="verify" id="mix-verify">' + verifyLine(data) + '</p>' +
+      '<p class="note">괄호 계수는 화합물 몰비입니다. 표시는 0.0001 g 해상도 기준.</p>';
     result.hidden = false;
+  }
+  function updateCompositionView(editedIndex, editedRaw) {
+    var data = mixState;
+    var total = compositionTotal(data);
+    var totalBox = $('mix-total');
+    if (totalBox) totalBox.textContent = formatMass(total);
+    data.terms.forEach(function (term, index) {
+      var input = result.querySelector('.card-mass[data-term="' + index + '"]');
+      if (input && index !== editedIndex) input.value = term.massG.toFixed(BALANCE_DIGITS);
+      var sub = result.querySelector('[data-termsub="' + index + '"]');
+      if (sub) sub.textContent = '몰 질량 ' + term.molarMass.toFixed(3) + ' g/mol · ' + format(term.moles) + ' mol';
+    });
+    var elements = $('mix-elements');
+    if (elements) elements.innerHTML = elementCards(data.rows);
+    var verify = $('mix-verify');
+    if (verify) verify.innerHTML = verifyLine(data);
   }
   // 결과 카드에서 질량을 직접 수정 → 수정한 원소를 기준으로 전체 재계산
   result.addEventListener('input', function (event) {
@@ -114,6 +152,12 @@
     var value = Number(raw);
     if (!raw || !isFinite(value) || value <= 0) return;
     try {
+      if (field.dataset.term !== undefined && mixState && mode.value === 'mixture') {
+        var index = Number(field.dataset.term);
+        mixState = calc.rebalanceComposition(mixState.terms, index, value);
+        updateCompositionView(index, raw);
+        return;
+      }
       var data = calc.calculate(formula.value, { mode: 'reference', element: field.dataset.element, amount: value, unit: 'g' });
       render(data, field.dataset.element, raw);
       var again = result.querySelector('.card-mass[data-element="' + field.dataset.element + '"]');
@@ -124,9 +168,9 @@
     event.preventDefault(); error.textContent = ''; result.hidden = true;
     try {
       if (mode.value === 'mixture') {
-        var mixed = calc.calculateMixture(formula.value, formulaB.value, { amount: amount.value, unit: unit.value, ratio: ratioInput.value });
-        renderMixture(mixed);
-        saveHistory({ formula: formula.value.trim(), formulaB: formulaB.value.trim(), mode: 'mixture', amount: amount.value, unit: unit.value, ratio: ratioInput.value });
+        var mixed = calc.calculateComposition(formula.value, { amount: amount.value, unit: unit.value });
+        renderComposition(mixed);
+        saveHistory({ formula: formula.value.trim(), mode: 'mixture', amount: amount.value, unit: unit.value });
         renderHistory();
         return;
       }
@@ -150,8 +194,6 @@
     var button = event.target.closest('.history-item'); if (!button) return;
     var item = readHistory()[Number(button.dataset.index)]; if (!item) return;
     formula.value = item.formula; mode.value = item.mode; amount.value = item.amount; unit.value = item.unit;
-    if (item.formulaB !== undefined && formulaB) formulaB.value = item.formulaB;
-    if (item.ratio !== undefined && ratioInput) ratioInput.value = item.ratio;
     updateElements(); element.value = item.element || ''; updateMode(); form.requestSubmit();
   });
   updateMode(); updateElements(); renderHistory();

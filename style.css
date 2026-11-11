@@ -29,6 +29,7 @@ button:hover { background: #4993f2; } .error { min-height: 20px; color: #ff8e8e;
 .card-mass.static { border-color: transparent; background: transparent; }
 .sub-head { font-size: .95rem; color: #a9bad0; margin: 16px 0 8px; }
 .row-between { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.row-between h2 { flex: 0 0 auto; white-space: nowrap; }
 .ghost { background: transparent; border: 1px solid #33455f; color: #a9bad0; border-radius: 8px; padding: 6px 10px; font-size: .8rem; cursor: pointer; }
 .ghost:hover { border-color: #4a6285; color: #e6eefb; }
 .history-row { display: flex; align-items: stretch; gap: 6px; margin-bottom: 6px; }
