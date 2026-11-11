@@ -106,4 +106,17 @@ test('compound reference mode', () => {
   assert(Math.abs(elementSum - second.totalMassG) < 1e-9);
   assert.throws(() => calc.calculateFromTerms(terms, { amount: 1, referenceIndex: 5 }));
 });
+test('sub-stoichiometry formula: (Sn0.9Na0.1)0.99Ag0.01Se', () => {
+  const comp = calc.parseFormula('(Sn0.9Na0.1)0.99Ag0.01Se');
+  assert(Math.abs(comp.Sn - 0.891) < 1e-12);
+  assert(Math.abs(comp.Na - 0.099) < 1e-12);
+  assert.strictEqual(comp.Ag, 0.01);
+  assert.strictEqual(comp.Se, 1);
+  const total = calc.calculate('(Sn0.9Na0.1)0.99Ag0.01Se', { mode: 'total', amount: 10, unit: 'g' });
+  const sum = total.rows.reduce((acc, row) => acc + row.massG, 0);
+  assert(Math.abs(sum - 10) < 1e-9);
+  const ref = calc.calculate('(Sn0.9Na0.1)0.99Ag0.01Se', { mode: 'reference', element: 'Sn', amount: 1, unit: 'g' });
+  const weightOf = (rows, el) => rows.find(r => r.element === el).massG;
+  assert(Math.abs(weightOf(ref.rows, 'Se') / weightOf(ref.rows, 'Sn') - (1 / 0.891) * (78.971 / 118.71)) < 1e-9);
+});
 process.exitCode = failures ? 1 : 0;

@@ -104,8 +104,11 @@
     var showRef = mode.value === 'mixture-reference';
     Array.prototype.forEach.call(mixRowList.children, function (row) {
       var radio = row.querySelector('.mix-ref');
-      if (radio) radio.hidden = !showRef;
+      if (radio) radio.hidden = false;
+      row.classList.toggle('no-ref', !showRef);
     });
+    var head = document.querySelector('.mix-head');
+    if (head) head.classList.toggle('no-ref', !showRef);
     if (showRef && !mixRowList.querySelector('.mix-ref:checked')) {
       var first = mixRowList.querySelector('.mix-ref');
       if (first) first.checked = true;
@@ -174,21 +177,28 @@
   function compositionTotal(data) {
     return data.terms.reduce(function (sum, term) { return sum + roundedMass(term.massG); }, 0);
   }
-  function renderComposition(data) {
+  function renderComposition(data, editable) {
     mixState = data;
+    var canEdit = editable !== false;
     var terms = data.terms.map(function (term, index) {
+      var massCell = canEdit
+        ? '<input class="card-mass" type="text" inputmode="decimal" data-term="' + index + '" value="' + term.massG.toFixed(BALANCE_DIGITS) + '" aria-label="' + escapeHtml(term.formula) + ' 질량(g)">'
+        : '<span class="card-mass static">' + formatMass(term.massG) + '</span>';
       return '<div class="card"><div class="card-top"><b>' + escapeHtml(term.formula) +
         (term.coefficient !== 1 ? ' <em>×' + String(Number(term.coefficient)) + '</em>' : '') + '</b>' +
-        '<span class="mass-group"><input class="card-mass" type="text" inputmode="decimal" data-term="' + index +
-        '" value="' + term.massG.toFixed(BALANCE_DIGITS) + '" aria-label="' + escapeHtml(term.formula) + ' 질량(g)"><span class="unit">g</span></span></div>' +
+        '<span class="mass-group">' + massCell + '</span></div>' +
         '<div class="card-sub" data-termsub="' + index + '">몰 질량 ' + term.molarMass.toFixed(3) + ' g/mol · ' + format(term.moles) + ' mol</div></div>';
     }).join('');
     result.innerHTML = '<div class="summary"><strong>총 질량</strong><span id="mix-total">' + formatMass(compositionTotal(data)) + '</span>' +
       '<strong>화합물 수</strong><span>' + data.terms.length + '</span></div>' +
-      '<h3 class="sub-head">화합물별 질량 (직접 고치면 나머지가 같은 몰비로 따라옵니다)</h3><div class="cards" id="mix-terms">' + terms + '</div>' +
+      '<h3 class="sub-head">화합물별 질량' + (canEdit ? ' (직접 고치면 나머지가 같은 몰비로 따라옵니다)' : '') + '</h3>' +
+      '<div class="cards" id="mix-terms">' + terms + '</div>' +
       '<h3 class="sub-head">원소별 총 칭량량</h3><div class="cards" id="mix-elements">' + elementCards(data.rows) + '</div>' +
       '<p class="verify" id="mix-verify">' + verifyLine(data) + '</p>' +
-      '<p class="note">몰 수는 화합물끼리의 비율입니다. 표시는 0.0001 g 해상도 기준.</p>';
+      '<p class="note">' + (canEdit
+        ? '입력한 기준 화합물 질량을 고정하고, 몰 수 비율대로 나머지를 계산했습니다.'
+        : '입력한 총 질량을 몰 수 비율대로 나눈 결과입니다. (기준 화합물 모드에서는 화합물별 질량을 직접 고칠 수 있습니다)') +
+      ' 표시는 0.0001 g 해상도 기준.</p>';
     result.hidden = false;
   }
   function updateCompositionView(editedIndex, editedRaw) {
@@ -239,7 +249,7 @@
           options.referenceIndex = selection.referenceIndex;
         }
         var mixed = calc.calculateFromTerms(selection.terms, options);
-        renderComposition(mixed);
+        renderComposition(mixed, mode.value === 'mixture-reference');
         saveHistory({
           formula: selection.terms.map(function (term) { return term.formula; }).join(' + '),
           terms: selection.terms, referenceIndex: selection.referenceIndex,

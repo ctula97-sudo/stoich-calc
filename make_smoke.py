@@ -55,6 +55,8 @@ HARNESS = """
       document.getElementById('unit').value = 'g';
       document.getElementById('calculator').dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));
       out.push('MIXTOTAL err=[' + document.getElementById('error').textContent + ']');
+      out.push('MIXTOTAL formulaWidth=' + Math.round(document.querySelector('.mix-formula').offsetWidth) +
+               ' ratioWidth=' + Math.round(document.querySelector('.mix-ratio').offsetWidth));
       out.push('MIXTOTAL ' + (document.getElementById('result').innerText || '').replace(/\\\\s+/g, ' '));
 
       // 화합물 (기준 화합물) 모드
@@ -72,9 +74,19 @@ HARNESS = """
       document.getElementById('calculator').dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));
       out.push('MIXREF2 ' + (document.getElementById('result').innerText || '').replace(/\\\\s+/g, ' '));
 
-      // 화합물 3종 (총 질량)
-      modeSel.value = 'mixture-total';
-      modeSel.dispatchEvent(new Event('change'));
+      // 기준 화합물 모드에서 카드 질량 직접 수정 (총질량 모드는 수정 불가)
+      var termInput = document.querySelector('.card-mass[data-term="0"]');
+      if (termInput) {
+        termInput.value = '2';
+        termInput.dispatchEvent(new Event('input', {bubbles: true}));
+        var termVals = Array.prototype.map.call(document.querySelectorAll('.card-mass[data-term]'), function (f) { return f.dataset.term + '=' + f.value; }).join(',');
+        out.push('MIX-EDIT ' + termVals + ' | ' + (document.getElementById('mix-verify') || {}).innerText);
+      } else { out.push('MIX-EDIT FAILED: no term field'); }
+      var totalMode = document.getElementById('mode');
+      totalMode.value = 'mixture-total';
+      totalMode.dispatchEvent(new Event('change'));
+      document.getElementById('calculator').dispatchEvent(new Event('submit', {cancelable: true, bubbles: true}));
+      out.push('MIXTOTAL-EDITABLE fields=' + document.querySelectorAll('.card-mass[data-term]').length);
       document.getElementById('add-mix-row').click();
       var rows3 = document.querySelectorAll('.mix-row');
       rows3[2].querySelector('.mix-formula').value = 'Bi2Te3';
@@ -83,15 +95,6 @@ HARNESS = """
       out.push('MIX3 rows=' + document.querySelectorAll('.mix-row').length +
                ' err=[' + document.getElementById('error').textContent + ']');
       out.push('MIX3 ' + (document.getElementById('result').innerText || '').replace(/\\\\s+/g, ' '));
-
-      // 화합물 카드 질량 직접 수정
-      var termInput = document.querySelector('.card-mass[data-term="0"]');
-      if (termInput) {
-        termInput.value = '2';
-        termInput.dispatchEvent(new Event('input', {bubbles: true}));
-        var termVals = Array.prototype.map.call(document.querySelectorAll('.card-mass[data-term]'), function (f) { return f.dataset.term + '=' + f.value; }).join(',');
-        out.push('MIX-EDIT ' + termVals + ' | ' + (document.getElementById('mix-verify') || {}).innerText);
-      } else { out.push('MIX-EDIT FAILED: no term field'); }
 
       // 최근 계산: 개별 삭제 · 전체 지우기 버튼 유무
       var before = document.querySelectorAll('.history-row').length;

@@ -13,7 +13,7 @@
     <header><h1>화학량론 계산기</h1><p>재료 실험을 위한 원소별 칭량량 계산</p></header>
     <form id="calculator" novalidate>
       <label>계산 모드<select id="mode"><option value="reference">원소별 (기준 원소)</option><option value="total">원소별 (총 질량)</option><option value="mixture-reference">화합물 (기준 화합물)</option><option value="mixture-total">화합물 (총 질량)</option></select></label>
-      <label id="formula-wrap"><span id="formula-label">화학식</span><input id="formula" type="text" placeholder="예: ZnGa2Se4" autocomplete="off"></label>
+      <label id="formula-wrap"><span id="formula-label">화학식</span><input id="formula" type="text" placeholder="예: ZnGa2Se4" autocomplete="off"><span class="hint">괄호·소수 조성도 계산됩니다 — 예: (Sn0.9Na0.1)0.99Ag0.01Se</span></label>
       <div id="mixture-rows" hidden>
         <div class="mix-head"><span id="mix-ref-head">기준</span><span>화합물</span><span>몰 수</span></div>
         <div id="mix-row-list"></div>

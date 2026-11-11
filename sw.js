@@ -1,5 +1,5 @@
 // Network-first: 온라인이면 항상 최신 배포본을 받고, 오프라인이면 마지막 캐시로 동작한다.
-const CACHE = 'stoich-v20261111-125911';
+const CACHE = 'stoich-v20261111-132117';
 
 self.addEventListener('install', () => self.skipWaiting());
 

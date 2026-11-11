@@ -50,12 +50,14 @@ button:hover { background: #4993f2; } .error { min-height: 20px; color: #ff8e8e;
 .comment-editor { margin-top: 8px; }
 .comment-edit { width: 100%; min-height: 72px; background: #0e1725; border: 1px solid #33455f; border-radius: 8px; color: #e6eefb; padding: 8px 10px; font: inherit; font-size: .9rem; resize: vertical; }
 .edited { color: #7f8fa6; font-size: .72rem; }
+.hint { font-size: .74rem; color: #7f8fa6; }
 .mix-head, .mix-row { display: grid; grid-template-columns: 38px minmax(0, 1fr) 84px 34px; gap: 6px; align-items: center; }
 .mix-head { font-size: .72rem; color: #7f8fa6; margin-bottom: 4px; }
 .mix-row { margin-bottom: 6px; }
 .mix-letter { font-size: .8rem; color: #9dacbf; text-align: center; }
 .mix-row .mix-ref, .mix-head .mix-ref { width: 16px; min-height: 0; height: 16px; margin: 0 auto; accent-color: #2f80ed; padding: 0; }
 .mix-ref[hidden] { display: none; }
+.mix-row.no-ref .mix-ref { visibility: hidden; }
 .mix-row input { min-height: 40px; padding: 8px 10px; font-size: .95rem; }
 .mix-del { min-height: 40px; padding: 0; background: #16202f; border: 1px solid #2b3a50; color: #92a3b8; font-size: 1rem; border-radius: 8px; }
 .mix-del:hover { color: #ff8d8d; border-color: #6b2b2b; background: #16202f; }
@@ -76,7 +78,7 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
     <header><h1>화학량론 계산기</h1><p>재료 실험을 위한 원소별 칭량량 계산</p></header>
     <form id="calculator" novalidate>
       <label>계산 모드<select id="mode"><option value="reference">원소별 (기준 원소)</option><option value="total">원소별 (총 질량)</option><option value="mixture-reference">화합물 (기준 화합물)</option><option value="mixture-total">화합물 (총 질량)</option></select></label>
-      <label id="formula-wrap"><span id="formula-label">화학식</span><input id="formula" type="text" placeholder="예: ZnGa2Se4" autocomplete="off"></label>
+      <label id="formula-wrap"><span id="formula-label">화학식</span><input id="formula" type="text" placeholder="예: ZnGa2Se4" autocomplete="off"><span class="hint">괄호·소수 조성도 계산됩니다 — 예: (Sn0.9Na0.1)0.99Ag0.01Se</span></label>
       <div id="mixture-rows" hidden>
         <div class="mix-head"><span id="mix-ref-head">기준</span><span>화합물</span><span>몰 수</span></div>
         <div id="mix-row-list"></div>
@@ -426,8 +428,11 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
     var showRef = mode.value === 'mixture-reference';
     Array.prototype.forEach.call(mixRowList.children, function (row) {
       var radio = row.querySelector('.mix-ref');
-      if (radio) radio.hidden = !showRef;
+      if (radio) radio.hidden = false;
+      row.classList.toggle('no-ref', !showRef);
     });
+    var head = document.querySelector('.mix-head');
+    if (head) head.classList.toggle('no-ref', !showRef);
     if (showRef && !mixRowList.querySelector('.mix-ref:checked')) {
       var first = mixRowList.querySelector('.mix-ref');
       if (first) first.checked = true;
@@ -496,21 +501,28 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
   function compositionTotal(data) {
     return data.terms.reduce(function (sum, term) { return sum + roundedMass(term.massG); }, 0);
   }
-  function renderComposition(data) {
+  function renderComposition(data, editable) {
     mixState = data;
+    var canEdit = editable !== false;
     var terms = data.terms.map(function (term, index) {
+      var massCell = canEdit
+        ? '<input class="card-mass" type="text" inputmode="decimal" data-term="' + index + '" value="' + term.massG.toFixed(BALANCE_DIGITS) + '" aria-label="' + escapeHtml(term.formula) + ' 질량(g)">'
+        : '<span class="card-mass static">' + formatMass(term.massG) + '</span>';
       return '<div class="card"><div class="card-top"><b>' + escapeHtml(term.formula) +
         (term.coefficient !== 1 ? ' <em>×' + String(Number(term.coefficient)) + '</em>' : '') + '</b>' +
-        '<span class="mass-group"><input class="card-mass" type="text" inputmode="decimal" data-term="' + index +
-        '" value="' + term.massG.toFixed(BALANCE_DIGITS) + '" aria-label="' + escapeHtml(term.formula) + ' 질량(g)"><span class="unit">g</span></span></div>' +
+        '<span class="mass-group">' + massCell + '</span></div>' +
         '<div class="card-sub" data-termsub="' + index + '">몰 질량 ' + term.molarMass.toFixed(3) + ' g/mol · ' + format(term.moles) + ' mol</div></div>';
     }).join('');
     result.innerHTML = '<div class="summary"><strong>총 질량</strong><span id="mix-total">' + formatMass(compositionTotal(data)) + '</span>' +
       '<strong>화합물 수</strong><span>' + data.terms.length + '</span></div>' +
-      '<h3 class="sub-head">화합물별 질량 (직접 고치면 나머지가 같은 몰비로 따라옵니다)</h3><div class="cards" id="mix-terms">' + terms + '</div>' +
+      '<h3 class="sub-head">화합물별 질량' + (canEdit ? ' (직접 고치면 나머지가 같은 몰비로 따라옵니다)' : '') + '</h3>' +
+      '<div class="cards" id="mix-terms">' + terms + '</div>' +
       '<h3 class="sub-head">원소별 총 칭량량</h3><div class="cards" id="mix-elements">' + elementCards(data.rows) + '</div>' +
       '<p class="verify" id="mix-verify">' + verifyLine(data) + '</p>' +
-      '<p class="note">몰 수는 화합물끼리의 비율입니다. 표시는 0.0001 g 해상도 기준.</p>';
+      '<p class="note">' + (canEdit
+        ? '입력한 기준 화합물 질량을 고정하고, 몰 수 비율대로 나머지를 계산했습니다.'
+        : '입력한 총 질량을 몰 수 비율대로 나눈 결과입니다. (기준 화합물 모드에서는 화합물별 질량을 직접 고칠 수 있습니다)') +
+      ' 표시는 0.0001 g 해상도 기준.</p>';
     result.hidden = false;
   }
   function updateCompositionView(editedIndex, editedRaw) {
@@ -561,7 +573,7 @@ th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
           options.referenceIndex = selection.referenceIndex;
         }
         var mixed = calc.calculateFromTerms(selection.terms, options);
-        renderComposition(mixed);
+        renderComposition(mixed, mode.value === 'mixture-reference');
         saveHistory({
           formula: selection.terms.map(function (term) { return term.formula; }).join(' + '),
           terms: selection.terms, referenceIndex: selection.referenceIndex,
