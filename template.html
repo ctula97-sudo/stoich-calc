@@ -24,10 +24,12 @@
     <section><h2>최근 계산</h2><div id="history"></div></section>
     <section id="feedback">
       <h2>의견 남기기</h2>
-      <p class="note">로그인 없이 보낼 수 있습니다. 내용을 적고 보내기를 누르면 메일 앱이 열립니다.</p>
-      <textarea id="comment" rows="4" placeholder="예: 과잉 첨가 옵션이 있으면 좋겠습니다 / 이 계산이 이상합니다"></textarea>
-      <button type="button" id="send-comment">메일로 보내기</button>
+      <p class="note">로그인 없이 익명으로 남길 수 있고, 남긴 글은 바로 아래 목록에 표시됩니다.</p>
+      <label>이름 (선택)<input id="comment-name" type="text" maxlength="20" placeholder="익명" autocomplete="off"></label>
+      <textarea id="comment" rows="3" maxlength="1000" placeholder="예: 과잉 첨가 옵션이 있으면 좋겠습니다 / 이 계산이 이상합니다"></textarea>
+      <button type="button" id="send-comment">남기기</button>
       <p id="comment-status" class="note" role="status"></p>
+      <div id="comment-list" class="comments"></div>
     </section>
   </main>
   <script src="calc.js"></script><script src="app.js"></script>

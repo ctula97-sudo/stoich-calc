@@ -107,21 +107,59 @@
     updateElements(); element.value = item.element || ''; updateMode(); form.requestSubmit();
   });
   updateMode(); updateElements(); renderHistory();
-  // 의견 보내기: 서버 없이 메일 앱으로 전달
-  var FEEDBACK_EMAIL = 'ctula97@gmail.com';
-  function buildFeedbackHref(body) {
-    return 'mailto:' + FEEDBACK_EMAIL + '?subject=' + encodeURIComponent('[화학량론 계산기 의견]') + '&body=' + encodeURIComponent(body);
+  // 댓글: 자체 API(익명). 정적 사이트라 서버는 이 NAS에서 돌고, Tailscale Funnel로 노출한다.
+  var API_BASE = (location.protocol === 'file:' || location.hostname === '127.0.0.1' || location.hostname === 'localhost')
+    ? 'http://127.0.0.1:8099/comments'
+    : 'https://nas.tail3a46d0.ts.net/comments';
+  function escapeHtml(text) {
+    return String(text).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
   }
-  window.FeedbackMail = { href: buildFeedbackHref };
-  var commentBox = $('comment'), commentStatus = $('comment-status'), sendButton = $('send-comment');
+  var commentBox = $('comment'), commentName = $('comment-name'), commentStatus = $('comment-status');
+  var commentList = $('comment-list'), sendButton = $('send-comment');
+  function renderComments(list) {
+    if (!list.length) {
+      commentList.innerHTML = '<p class="muted">아직 남긴 의견이 없습니다. 첫 의견을 남겨 보세요.</p>';
+      return;
+    }
+    commentList.innerHTML = list.map(function (item) {
+      return '<article class="comment"><div class="comment-head"><b>' + escapeHtml(item.name) + '</b><time>' +
+        escapeHtml(String(item.created_at).slice(0, 16)) + '</time></div><p>' + escapeHtml(item.body) + '</p></article>';
+    }).join('');
+  }
+  function loadComments() {
+    fetch(API_BASE + '?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (response) { return response.json(); })
+      .then(function (data) { renderComments(data.comments || []); })
+      .catch(function () {
+        commentList.innerHTML = '<p class="muted">댓글 서버에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요.</p>';
+      });
+  }
   if (sendButton) {
     sendButton.addEventListener('click', function () {
       var body = commentBox.value.trim();
-      if (!body) { commentStatus.textContent = '보낼 내용을 먼저 적어 주세요.'; return; }
-      window.location.href = buildFeedbackHref(body);
-      commentStatus.textContent = '메일 앱이 열리면 그대로 전송해 주세요. 앱이 없으면 내용을 복사해 주세요.';
-      commentBox.select();
+      if (!body) { commentStatus.textContent = '남길 내용을 먼저 적어 주세요.'; return; }
+      sendButton.disabled = true;
+      commentStatus.textContent = '보내는 중…';
+      fetch(API_BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: commentName.value, body: body })
+      }).then(function (response) {
+        return response.json().then(function (data) { return { ok: response.ok, data: data }; });
+      }).then(function (result) {
+        sendButton.disabled = false;
+        if (!result.ok) { commentStatus.textContent = result.data.error || '남기지 못했습니다.'; return; }
+        commentBox.value = '';
+        commentStatus.textContent = '남겼습니다.';
+        loadComments();
+      }).catch(function () {
+        sendButton.disabled = false;
+        commentStatus.textContent = '댓글 서버에 연결하지 못했습니다.';
+      });
     });
+    loadComments();
   }
   if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(function () {});
 }());

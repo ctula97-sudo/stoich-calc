@@ -34,14 +34,20 @@ HARNESS = """
       if (send) {
         send.dispatchEvent(new Event('click'));
         out.push('COMMENT empty -> [' + document.getElementById('comment-status').textContent + ']');
+        document.getElementById('comment-name').value = '테스터';
         document.getElementById('comment').value = '과잉 첨가 옵션 부탁드립니다';
-        out.push('MAILTO ' + (window.FeedbackMail ? window.FeedbackMail.href(document.getElementById('comment').value) : 'MISSING'));
+        send.dispatchEvent(new Event('click'));
       } else { out.push('COMMENT FAILED: no send button'); }
 
-      var pre = document.createElement('pre');
-      pre.id = '__smoke';
-      pre.textContent = out.join('\\n');
-      document.body.appendChild(pre);
+      setTimeout(function () {
+        var list = document.getElementById('comment-list');
+        out.push('COMMENT list -> [' + (list ? list.innerText.replace(/\\s+/g, ' ') : 'none') + ']');
+        out.push('COMMENT status -> [' + document.getElementById('comment-status').textContent + ']');
+        var pre = document.createElement('pre');
+        pre.id = '__smoke';
+        pre.textContent = out.join('\\n');
+        document.body.appendChild(pre);
+      }, 1500);
     });
   </script>
 """

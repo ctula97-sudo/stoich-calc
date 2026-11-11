@@ -9,6 +9,11 @@ label { display: grid; gap: 6px; font-size: .9rem; color: #b7c5d8; }
 input, select, button, textarea { min-height: 46px; width: 100%; border: 1px solid #3b506c; border-radius: 8px; padding: 10px 12px; background: #0e1725; color: #f5f8fc; font-size: 1rem; font-family: inherit; }
 textarea { min-height: 96px; resize: vertical; line-height: 1.5; }
 #feedback { margin-top: 8px; } #feedback textarea { margin-bottom: 10px; }
+.comments { margin-top: 14px; display: grid; gap: 8px; }
+.comment { background: #182437; border: 1px solid #27394f; border-radius: 10px; padding: 10px 12px; }
+.comment-head { display: flex; justify-content: space-between; gap: 10px; font-size: .8rem; color: #9dacbf; }
+.comment-head b { font-size: .92rem; color: #e8eef8; }
+.comment p { margin: 6px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 button { cursor: pointer; background: #2f80ed; border-color: #2f80ed; font-weight: 700; }
 button:hover { background: #4993f2; } .error { min-height: 20px; color: #ff8e8e; }
 .summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: #182437; padding: 14px; border-radius: 10px; }
