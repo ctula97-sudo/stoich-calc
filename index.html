@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <link rel="manifest" href="manifest.webmanifest">
+  <style>
+:root { color-scheme: dark; font-family: system-ui, -apple-system, sans-serif; background: #101827; color: #e8eef8; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: #101827; }
+main { width: min(100% - 24px, 760px); margin: auto; padding: 20px 0 40px; }
+h1 { margin: 0; font-size: 1.65rem; } h2 { font-size: 1.15rem; margin: 24px 0 10px; }
+header p, .muted { color: #9dacbf; margin-top: 6px; }
+form { display: grid; gap: 12px; background: #182437; padding: 16px; border-radius: 12px; }
+label { display: grid; gap: 6px; font-size: .9rem; color: #b7c5d8; }
+input, select, button { min-height: 46px; width: 100%; border: 1px solid #3b506c; border-radius: 8px; padding: 10px 12px; background: #0e1725; color: #f5f8fc; font-size: 1rem; }
+button { cursor: pointer; background: #2f80ed; border-color: #2f80ed; font-weight: 700; }
+button:hover { background: #4993f2; } .error { min-height: 20px; color: #ff8e8e; }
+.summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: #182437; padding: 14px; border-radius: 10px; }
+.summary span { text-align: right; color: #8ed1ff; } .table-wrap { overflow-x: auto; margin-top: 12px; }
+.cards { display: grid; gap: 8px; margin-top: 12px; }
+.card { background: #182437; border: 1px solid #27394f; border-radius: 10px; padding: 12px 14px; }
+.card.ref { border-color: #2f80ed; background: #16273c; }
+.card-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.card-top b { font-size: 1.12rem; } .card-top em { font-style: normal; font-size: .7rem; color: #8ed1ff; border: 1px solid #2f80ed; border-radius: 999px; padding: 1px 7px; vertical-align: 2px; }
+.mass-group { margin-left: auto; display: inline-flex; align-items: baseline; gap: 6px; }
+.card-mass { width: 6.4em; min-height: 0; text-align: right; font-size: 1.15rem; font-weight: 700; color: #9be2a8; background: #0e1725; border: 1px dashed #3b506c; border-radius: 8px; padding: 6px 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.card-mass:focus { outline: none; border-color: #2f80ed; border-style: solid; background: #0b1420; }
+.unit { color: #9dacbf; font-size: .9rem; }
+.card-sub { margin-top: 4px; font-size: .78rem; color: #9dacbf; }
+table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: .86rem; background: #182437; }
+th, td { padding: 10px 8px; border-bottom: 1px solid #30445e; text-align: right; white-space: nowrap; } th:first-child, td:first-child { text-align: left; }
+th { color: #a9bad0; } .verify { color: #b9d8bd; overflow-wrap: anywhere; }
+.note { color: #7f8fa4; font-size: .78rem; margin-top: 6px; }
+.history-item { margin: 4px 0; text-align: left; background: #182437; border-color: #30445e; font-weight: 400; }
+[hidden] { display: none !important; }
+
+</style>
+  <title>화학량론 계산기</title>
+</head>
+<body>
+  <main>
+    <header><h1>화학량론 계산기</h1><p>재료 실험을 위한 원소별 칭량량 계산</p></header>
+    <form id="calculator" novalidate>
+      <label>계산 모드<select id="mode"><option value="reference">기준 원소</option><option value="total">총 질량</option></select></label>
+      <label>화학식<input id="formula" type="text" placeholder="예: ZnGa2Se4" autocomplete="off"></label>
+      <div id="reference-wrap"><label>기준 원소<select id="element"></select></label></div>
+      <label><span id="amount-label">기준 원소 질량</span><input id="amount" type="number" min="0" step="any" inputmode="decimal" placeholder="예: 1.0000"></label>
+      <label>단위<select id="unit"><option value="g">g</option><option value="mg">mg</option></select></label>
+      <button type="submit">계산하기</button>
+    </form>
+    <p id="error" class="error" role="alert"></p>
+    <section id="result" hidden><h2>계산 결과</h2></section>
+    <section><h2>최근 계산</h2><div id="history"></div></section>
+  </main>
+  <script>
+(function (root, factory) {
+  if (typeof module === 'object' && module.exports) module.exports = factory();
+  else root.StoichCalc = factory();
+}(typeof self !== 'undefined' ? self : this, function () {
+  'use strict';
+
+  var weights = {
+    Ag: 107.8682, Al: 26.9815384, Ar: 39.95, As: 74.921595, Au: 196.96657, B: 10.81,
+    Ba: 137.327, Be: 9.0121831, Bi: 208.9804, Br: 79.904, C: 12.011, Ca: 40.078,
+    Cd: 112.414, Ce: 140.116, Cl: 35.45, Co: 58.933194, Cr: 51.9961, Cs: 132.90545196,
+    Cu: 63.546, Dy: 162.5, Er: 167.259, Eu: 151.964, F: 18.998403162, Fe: 55.845,
+    Ga: 69.723, Gd: 157.249, Ge: 72.63, H: 1.008, He: 4.002602, Hf: 178.486,
+    Hg: 200.592, Ho: 164.930329, I: 126.90447, In: 114.818, Ir: 192.217, K: 39.0983,
+    Kr: 83.798, La: 138.90547, Li: 6.94, Lu: 174.96669, Mg: 24.305, Mn: 54.938043,
+    Mo: 95.95, N: 14.007, Na: 22.98976928, Nb: 92.90637, Nd: 144.242, Ne: 20.1797,
+    Ni: 58.6934, O: 15.999, Os: 190.23, P: 30.973761998, Pa: 231.03588, Pb: 207.2,
+    Pd: 106.42, Pr: 140.90766, Pt: 195.084, Rb: 85.4678, Re: 186.207, Rh: 102.90549,
+    Ru: 101.07, S: 32.06, Sb: 121.76, Sc: 44.955907, Se: 78.971, Si: 28.085,
+    Sm: 150.36, Sn: 118.71, Sr: 87.62, Ta: 180.94788, Tb: 158.925354, Te: 127.6,
+    Th: 232.0377, Ti: 47.867, Tl: 204.38, Tm: 168.934219, U: 238.02891, V: 50.9415,
+    W: 183.84, Xe: 131.293, Y: 88.905838, Yb: 173.045, Zn: 65.38, Zr: 91.222
+  };
+
+  function parseFormula(formula) {
+    if (typeof formula !== 'string' || !formula.trim()) throw new Error('화학식을 입력해 주세요.');
+    var text = formula.trim(), index = 0;
+    function number() {
+      var start = index, seenDot = false;
+      while (index < text.length && /[0-9.]/.test(text[index])) {
+        if (text[index] === '.') {
+          if (seenDot) break;
+          seenDot = true;
+        }
+        index++;
+      }
+      if (start === index || text.slice(start, index) === '.') return 1;
+      var value = Number(text.slice(start, index));
+      if (!Number.isFinite(value) || value <= 0) throw new Error('첨자는 0보다 큰 숫자여야 합니다.');
+      return value;
+    }
+    function group(stopAtClose) {
+      var result = {};
+      while (index < text.length && text[index] !== ')') {
+        if (text[index] === '(') {
+          index++;
+          var nested = group(true);
+          if (text[index] !== ')') throw new Error('괄호가 닫히지 않았습니다.');
+          index++;
+          if (!Object.keys(nested).length) throw new Error('빈 괄호는 사용할 수 없습니다.');
+          var multiplier = number();
+          Object.keys(nested).forEach(function (el) { result[el] = (result[el] || 0) + nested[el] * multiplier; });
+        } else if (/[A-Z]/.test(text[index])) {
+          var symbol = text[index++];
+          if (index < text.length && /[a-z]/.test(text[index])) symbol += text[index++];
+          if (!Object.prototype.hasOwnProperty.call(weights, symbol)) throw new Error('알 수 없는 원소입니다: ' + symbol);
+          var count = number();
+          result[symbol] = (result[symbol] || 0) + count;
+        } else {
+          throw new Error('화학식 형식이 올바르지 않습니다.');
+        }
+      }
+      if (stopAtClose && index >= text.length) throw new Error('괄호가 닫히지 않았습니다.');
+      return result;
+    }
+    var composition = group(false);
+    if (index < text.length && text[index] === ')') throw new Error('닫는 괄호가 너무 많습니다.');
+    if (!Object.keys(composition).length) throw new Error('화학식을 입력해 주세요.');
+    return composition;
+  }
+
+  function molarMass(composition) {
+    return Object.keys(composition).reduce(function (sum, el) { return sum + composition[el] * weights[el]; }, 0);
+  }
+
+  function calculate(formula, options) {
+    var composition = parseFormula(formula), totalMolarMass = molarMass(composition);
+    options = options || {};
+    var unitFactor = options.unit === 'mg' ? 0.001 : 1;
+    var reference = options.mode === 'reference';
+    var supplied = Number(options.amount);
+    if (!Number.isFinite(supplied) || supplied <= 0) throw new Error('수량은 0보다 큰 숫자로 입력해 주세요.');
+    var targetMass = supplied * unitFactor, formulaMoles;
+    if (reference) {
+      var ref = options.element;
+      if (!Object.prototype.hasOwnProperty.call(composition, ref)) throw new Error('기준 원소가 화학식에 없습니다.');
+      formulaMoles = targetMass / (composition[ref] * weights[ref]);
+    } else {
+      formulaMoles = targetMass / totalMolarMass;
+    }
+    var rows = Object.keys(composition).map(function (element) {
+      var ratio = composition[element], moles = formulaMoles * ratio;
+      return {
+        element: element, ratio: ratio, atomicWeight: weights[element], moleAmount: moles,
+        massG: moles * weights[element], massPercent: (ratio * weights[element] / totalMolarMass) * 100
+      };
+    });
+    var totalG = rows.reduce(function (sum, row) { return sum + row.massG; }, 0);
+    return { formula: formula.trim(), composition: composition, molarMass: totalMolarMass, formulaMoles: formulaMoles, totalMassG: totalG, rows: rows };
+  }
+
+  return { atomicWeights: weights, parseFormula: parseFormula, molarMass: molarMass, calculate: calculate };
+}));
+
+</script>
+<script>
+(function () {
+  'use strict';
+  var calc = window.StoichCalc;
+  var $ = function (id) { return document.getElementById(id); };
+  var form = $('calculator'), mode = $('mode'), referenceWrap = $('reference-wrap');
+  var formula = $('formula'), element = $('element'), amount = $('amount'), unit = $('unit');
+  var error = $('error'), result = $('result'), historyBox = $('history');
+  var storageKey = 'stoich-history-v1';
+  // 기준 원소 목록은 입력한 화학식에 실제로 들어있는 원소만 보여준다.
+  function elementSymbols() { return Object.keys(calc.atomicWeights); }
+  function updateElements() {
+    var previous = element.value, list = [];
+    try { list = Object.keys(calc.parseFormula(formula.value)); } catch (e) { list = []; }
+    element.innerHTML = '';
+    if (!list.length) {
+      var placeholder = document.createElement('option');
+      placeholder.value = ''; placeholder.textContent = formula.value.trim() ? '화학식을 확인해 주세요' : '화학식을 먼저 입력하세요';
+      element.appendChild(placeholder);
+      return;
+    }
+    list.forEach(function (symbol) {
+      var option = document.createElement('option');
+      option.value = symbol; option.textContent = symbol; element.appendChild(option);
+    });
+    if (list.indexOf(previous) !== -1) element.value = previous;
+  }
+  function format(value) {
+    var abs = Math.abs(value);
+    return abs && abs < 1 ? value.toPrecision(6) : value.toPrecision(4);
+  }
+  // 칭량용 질량 표기: 연구실 저울(0.0001 g 해상도, 그람 스케일)에 맞춰 소수 넷째 자리까지 g로 표시
+  var BALANCE_DIGITS = 4;
+  function formatMass(massG) {
+    if (!isFinite(massG)) return '-';
+    if (massG > 0 && massG < 0.00005) return '<0.0001 g';
+    return massG.toFixed(BALANCE_DIGITS) + ' g';
+  }
+  function roundedMass(massG) { return Number(massG.toFixed(BALANCE_DIGITS)); }
+  function readHistory() { try { return JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch (_) { return []; } }
+  function saveHistory(item) {
+    try { var list = readHistory().filter(function (x) { return x.formula !== item.formula || x.mode !== item.mode || x.amount !== item.amount || x.unit !== item.unit; }); list.unshift(item); localStorage.setItem(storageKey, JSON.stringify(list.slice(0, 10))); } catch (_) {}
+  }
+  function renderHistory() {
+    var list = readHistory();
+    historyBox.innerHTML = list.length ? list.map(function (item, i) {
+      return '<button type="button" class="history-item" data-index="' + i + '">' + item.formula + ' · ' + (item.mode === 'reference' ? '기준 ' + item.element : '총 질량') + ' · ' + item.amount + item.unit + '</button>';
+    }).join('') : '<p class="muted">아직 계산 기록이 없습니다.</p>';
+  }
+  function updateMode() {
+    referenceWrap.hidden = mode.value !== 'reference';
+    $('amount-label').textContent = mode.value === 'reference' ? '기준 원소 질량' : '목표 총 질량';
+  }
+  function render(data, anchor, raw) {
+    var cards = data.rows.map(function (row) {
+      var isRef = row.element === anchor;
+      var belowBalance = row.massG > 0 && row.massG < 0.00005;
+      var shownValue = isRef && raw !== undefined ? raw : row.massG.toFixed(BALANCE_DIGITS);
+      return '<div class="card' + (isRef ? ' ref' : '') + '">' +
+        '<div class="card-top"><b>' + row.element + (isRef ? ' <em>기준</em>' : '') + '</b>' +
+        '<span class="mass-group"><input class="card-mass" type="text" inputmode="decimal" data-element="' + row.element +
+        '" value="' + shownValue + '" aria-label="' + row.element + ' 질량(g)"><span class="unit">g</span></span></div>' +
+        '<div class="card-sub">몰비 ' + format(row.ratio) + ' · 원자량 ' + row.atomicWeight +
+        ' · ' + format(row.moleAmount) + ' mol · ' + format(row.massPercent) + '%' +
+        (belowBalance ? ' · 저울 최소단위 미만 (계산값 ' + row.massG.toPrecision(2) + ' g)' : '') + '</div></div>';
+    }).join('');
+    var shownSum = data.rows.reduce(function (sum, r) { return sum + roundedMass(r.massG); }, 0);
+    var shownTotal = roundedMass(data.totalMassG);
+    var checkLine = '검산: ' + data.rows.map(function (r) { return formatMass(r.massG); }).join(' + ') +
+      ' = <b>' + formatMass(shownSum) + '</b>' +
+      (Math.abs(shownSum - shownTotal) >= 0.00005 ? ' (실제 합계 ' + formatMass(data.totalMassG) + ', 반올림 차이)' : '');
+    result.innerHTML = '<div class="summary"><strong>몰 질량</strong><span>' + data.molarMass.toFixed(3) + ' g/mol</span><strong>화학식 단위 몰수</strong><span>' + format(data.formulaMoles) + ' mol</span></div>' +
+      '<div class="cards">' + cards + '</div>' +
+      '<p class="verify">' + checkLine + '</p>' +
+      '<p class="note">질량을 직접 고치면 나머지 원소가 그 값에 맞춰 다시 계산됩니다. 표시는 0.0001 g 해상도 기준.</p>';
+    result.hidden = false;
+  }
+  // 결과 카드에서 질량을 직접 수정 → 수정한 원소를 기준으로 전체 재계산
+  result.addEventListener('input', function (event) {
+    var field = event.target.closest ? event.target.closest('.card-mass') : null;
+    if (!field) return;
+    var raw = field.value.replace(/,/g, '.').trim();
+    var value = Number(raw);
+    if (!raw || !isFinite(value) || value <= 0) return;
+    try {
+      var data = calc.calculate(formula.value, { mode: 'reference', element: field.dataset.element, amount: value, unit: 'g' });
+      render(data, field.dataset.element, raw);
+      var again = result.querySelector('.card-mass[data-element="' + field.dataset.element + '"]');
+      if (again) { again.focus(); again.setSelectionRange(raw.length, raw.length); }
+    } catch (e) { /* 입력 중간 상태는 무시 */ }
+  });
+  form.addEventListener('submit', function (event) {
+    event.preventDefault(); error.textContent = ''; result.hidden = true;
+    try {
+      if (mode.value === 'reference' && !element.value) throw new Error('기준 원소를 선택해 주세요.');
+      var data = calc.calculate(formula.value, { mode: mode.value, element: element.value, amount: amount.value, unit: unit.value });
+      render(data, mode.value === 'reference' ? element.value : null);
+      saveHistory({ formula: formula.value.trim(), mode: mode.value, element: element.value, amount: amount.value, unit: unit.value });
+      renderHistory();
+    } catch (e) { error.textContent = e.message; }
+  });
+  mode.addEventListener('change', updateMode);
+  formula.addEventListener('input', updateElements);
+  historyBox.addEventListener('click', function (event) {
+    var button = event.target.closest('.history-item'); if (!button) return;
+    var item = readHistory()[Number(button.dataset.index)]; if (!item) return;
+    formula.value = item.formula; mode.value = item.mode; amount.value = item.amount; unit.value = item.unit;
+    updateElements(); element.value = item.element || ''; updateMode(); form.requestSubmit();
+  });
+  updateMode(); updateElements(); renderHistory();
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(function () {});
+}());
+
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+*.out
+*.log
+*.pings.log
+shot*.png
+prompt.txt
+_smoke.html
+copilot.*
